@@ -6,7 +6,7 @@
 #include <cassert>
 #include <sstream>
 #include <iostream>
-#include "tuple.hpp"
+#include "rapidtuple/tuple.hpp"
 
 template<class>
 struct Check {};
@@ -26,6 +26,8 @@ int main() {
     using T1 = std::tuple<TYPE>;
     using T2 = rapidtuple::tuple<TYPE>;
 #undef TYPE
+    
+    static_assert(std::tuple_size<T1>::value == std::tuple_size<T2>::value, "different size");
 
 #define SAME(i)\
   Check<std::tuple_element<i,T1>::type>() =\

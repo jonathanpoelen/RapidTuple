@@ -14,7 +14,7 @@ for c in "$@" ; do
   echo
   for f in "$d"/*.cpp ; do
     compile "$f" "$c" -DNAMESPACE=std'       '
-    compile "$f" "$c" -DNAMESPACE=RapidTuple
+    compile "$f" "$c" -DNAMESPACE=rapidtuple
     echo
   done
   echo

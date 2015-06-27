@@ -712,15 +712,16 @@ noexcept(noexcept(t1.swap(t2))) {
 
 namespace std {
 
-template<class... Ts>
-struct tuple_size< ::rapidtuple::tuple<Ts...>>
+template<std::size_t... Ints, class... Ts>
+struct tuple_size< ::rapidtuple::detail_::tuple_impl<std::index_sequence<Ints...>, Ts...>>
 : std::integral_constant<std::size_t, sizeof...(Ts)>
 {};
 
 
-template<std::size_t I, class... Ts>
-struct tuple_element<I, ::rapidtuple::tuple<Ts...>>
-{ using type = typename ::rapidtuple::detail_::at<I, Ts...>::type; };
+template<std::size_t I, std::size_t... Ints, class... Ts>
+struct tuple_element<
+  I, ::rapidtuple::detail_::tuple_impl<std::index_sequence<Ints...>, Ts...>
+>{ using type = typename ::rapidtuple::detail_::at<I, Ts...>::type; };
 
 
 template<class... Ts, class Alloc>
