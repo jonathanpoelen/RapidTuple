@@ -466,10 +466,10 @@ namespace detail_ {
   struct tuple_impl<std::index_sequence<0>>
   {};
 
-  template<std::size_t... TInts, class... Ts, std::size_t... UInts, class... Us>
+  template<std::size_t... Ints, class... Ts, class... Us>
   void swap(
-    tuple_impl<std::index_sequence<TInts...>, Ts...> & t1,
-    tuple_impl<std::index_sequence<UInts...>, Us...> & t2
+    tuple_impl<std::index_sequence<Ints...>, Ts...> & t1,
+    tuple_impl<std::index_sequence<Ints...>, Us...> & t2
   ) noexcept(noexcept(t1.swap(t2))) {
     t1.swap(t2);
   }
@@ -551,20 +551,20 @@ namespace detail_ {
   }
 
   template<class T, class... Ts, class U, class... Us, class Tuple1, class Tuple2>
-  constexpr bool eq_impl(pack<T,Ts...>, pack<U,Us...>, Tuple1 const & t1, Tuple2 const & t2) {
-    return static_cast<T const&>(t1).get() == static_cast<U const&>(t2).get()
-        && eq_impl(pack<Ts...>(), pack<Us...>(), t1, t2);
+  constexpr bool eq_impl(pack<T,Ts...>, pack<U,Us...>, Tuple1 const & lhs, Tuple2 const & rhs) {
+    return static_cast<T const&>(lhs).get() == static_cast<U const&>(rhs).get()
+        && eq_impl(pack<Ts...>(), pack<Us...>(), lhs, rhs);
   }
 
-  template<std::size_t... TInts, class... Ts, std::size_t... UInts, class... Us>
+  template<std::size_t... Ints, class... Ts, class... Us>
   constexpr bool operator==(
-    tuple_impl<std::index_sequence<TInts...>, Ts...> const & t1,
-    tuple_impl<std::index_sequence<UInts...>, Us...> const & t2
+    tuple_impl<std::index_sequence<Ints...>, Ts...> const & lhs,
+    tuple_impl<std::index_sequence<Ints...>, Us...> const & rhs
   ) {
     return eq_impl(
-      pack<head<TInts, Ts>...>(),
-      pack<head<UInts, Us>...>(),
-      t1, t2
+      pack<head<Ints, Ts>...>(),
+      pack<head<Ints, Us>...>(),
+      lhs, rhs
     );
   }
 
@@ -574,22 +574,58 @@ namespace detail_ {
   }
 
   template<class T, class... Ts, class U, class... Us, class Tuple1, class Tuple2>
-  constexpr bool less_impl(pack<T,Ts...>, pack<U,Us...>, Tuple1 const & t1, Tuple2 const & t2) {
-    return static_cast<T const&>(t1).get() < static_cast<U const&>(t2).get()
-        || (!(static_cast<T const&>(t1).get() < static_cast<U const&>(t2).get())
-            && less_impl(pack<Ts...>(), pack<Us...>(), t1, t2));
+  constexpr bool less_impl(pack<T,Ts...>, pack<U,Us...>, Tuple1 const & lhs, Tuple2 const & rhs) {
+    return static_cast<T const&>(lhs).get() < static_cast<U const&>(rhs).get()
+        || (!(static_cast<U const&>(rhs).get() < static_cast<T const&>(lhs).get())
+            && less_impl(pack<Ts...>(), pack<Us...>(), lhs, rhs));
   }
 
-  template<std::size_t... TInts, class... Ts, std::size_t... UInts, class... Us>
+  template<std::size_t... Ints, class... Ts, class... Us>
   constexpr bool operator<(
-    tuple_impl<std::index_sequence<TInts...>, Ts...> const & t1,
-    tuple_impl<std::index_sequence<UInts...>, Us...> const & t2
+    tuple_impl<std::index_sequence<Ints...>, Ts...> const & lhs,
+    tuple_impl<std::index_sequence<Ints...>, Us...> const & rhs
   ) {
     return less_impl(
-      pack<head<TInts, Ts>...>(),
-      pack<head<UInts, Us>...>(),
-      t1, t2
+      pack<head<Ints, Ts>...>(),
+      pack<head<Ints, Us>...>(),
+      lhs, rhs
     );
+  }
+
+  template<std::size_t... Ints, class... Ts, class... Us>
+  constexpr bool
+  operator!=(
+    tuple_impl<std::index_sequence<Ints...>, Ts...> const & lhs,
+    tuple_impl<std::index_sequence<Ints...>, Us...> const & rhs
+  ) {
+    return !(lhs == rhs);
+  }
+
+  template<std::size_t... Ints, class... Ts, class... Us>
+  constexpr bool
+  operator<=(
+    tuple_impl<std::index_sequence<Ints...>, Ts...> const & lhs,
+    tuple_impl<std::index_sequence<Ints...>, Us...> const & rhs
+  ) {
+    return !(rhs < lhs);
+  }
+
+  template<std::size_t... Ints, class... Ts, class... Us>
+  constexpr bool
+  operator>(
+    tuple_impl<std::index_sequence<Ints...>, Ts...> const & lhs,
+    tuple_impl<std::index_sequence<Ints...>, Us...> const & rhs
+  ) {
+    return rhs < lhs;
+  }
+
+  template<std::size_t... Ints, class... Ts, class... Us>
+  constexpr bool
+  operator>=(
+    tuple_impl<std::index_sequence<Ints...>, Ts...> const & lhs,
+    tuple_impl<std::index_sequence<Ints...>, Us...> const & rhs
+  ) {
+    return !(lhs < rhs);
   }
 
   template<class PackRet, class IntsPack, class TuplesPack>
@@ -629,85 +665,9 @@ namespace detail_ {
 using detail_::get;
 using detail_::apply_from_tuple;
 
-
-template<class>
-struct tuple_size;
-
-template<std::size_t... Ints, class... Ts>
-struct tuple_size< ::rapidtuple::detail_::tuple_impl<std::index_sequence<Ints...>, Ts...>>
-: std::integral_constant<std::size_t, sizeof...(Ts)>
-{};
-
-template<class T>
-struct tuple_size<const T>
-: std::integral_constant<std::size_t, tuple_size<T>::value>
-{};
-
-template<class T>
-struct tuple_size<volatile T>
-: std::integral_constant<std::size_t, tuple_size<T>::value>
-{};
-
-template<class T>
-struct tuple_size<const volatile T>
-: std::integral_constant<std::size_t, tuple_size<T>::value>
-{};
-
-
-template<std::size_t I, class Tuple>
-struct tuple_element;
-
-template<std::size_t I, std::size_t... Ints, class... Ts>
-struct tuple_element<
-  I, ::rapidtuple::detail_::tuple_impl<std::index_sequence<Ints...>, Ts...>
->{ using type = typename detail_::at<I, Ts...>::type; };
-
-template<std::size_t I, class T>
-struct tuple_element<I, const T>
-{ using type = const typename std::tuple_element<I, T>::type; };
-
-template<std::size_t I, class T>
-struct tuple_element<I, volatile T>
-{ using type = volatile typename std::tuple_element<I, T>::type; };
-
-template< std::size_t I, class T>
-struct tuple_element<I, const volatile T>
-{ using type = const volatile typename std::tuple_element<I, T>::type; };
-
-template<std::size_t I, class Tuple>
-using tuple_element_t = typename tuple_element<I, Tuple>::type;
-
-
-template<class... Ts, class... Us>
-constexpr bool
-operator!=(const tuple<Ts...>& lhs, const tuple<Us...>& rhs) {
-  return !(lhs == rhs);
-}
-
-template<class... Ts, class... Us>
-constexpr bool
-operator<=(const tuple<Ts...>& lhs, const tuple<Us...>& rhs) {
-  return !(rhs < lhs);
-}
-
-template<class... Ts, class... Us>
-constexpr bool
-operator>(const tuple<Ts...>& lhs, const tuple<Us...>& rhs) {
-  return rhs < lhs;
-}
-
-template<class... Ts, class... Us>
-constexpr bool
-operator>=(const tuple<Ts...>& lhs, const tuple<Us...>& rhs) {
-  return !(lhs < rhs);
-}
-
-
-template<class... Ts>
-void swap(tuple<Ts...> & t1, tuple<Ts...> & t2)
-noexcept(noexcept(t1.swap(t2))) {
-  t1.swap(t2);
-}
+using std::tuple_size;
+using std::tuple_element;
+using std::tuple_element_t;
 
 }
 

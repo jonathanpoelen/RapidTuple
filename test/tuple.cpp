@@ -267,6 +267,27 @@ int main() {
     int x = 0;
     CHECK_EQUAL(7, (apply_from_tuple(t, [&x](auto & e) { x+=e; }), x));
   }
+  
+  {
+    rapidtuple::tuple<int,int> t1{2,4};
+    if (!(t1 == t1)) {
+      std::cerr << __LINE__ << "\n";
+      return 1;
+    }
+    if (t1 < t1) {
+      std::cerr << __LINE__ << "\n";
+      return 1;
+    }
+    rapidtuple::tuple<int,int> t2{4,2};
+    if (t2 == t1) {
+      std::cerr << __LINE__ << "\n";
+      return 1;
+    }
+    if (!(t1 < t2)) {
+      std::cerr << __LINE__ << "\n";
+      return 1;
+    }
+  }
 
   return 0;
 }
