@@ -28,6 +28,10 @@ int main() {
 #undef TYPE
     
     static_assert(std::tuple_size<T1>::value == std::tuple_size<T2>::value, "different size");
+    static_assert(std::tuple_size<T1>::value == rapidtuple::tuple_size<T2>::value, "different size");
+    
+    Check<std::tuple_element_t<1, T1>>{} = Check<std::tuple_element_t<1, T2>>{};
+    Check<std::tuple_element_t<1, T1>>{} = Check<rapidtuple::tuple_element_t<1, T2>>{};
 
 #define SAME(i)\
   Check<std::tuple_element<i,T1>::type>() =\

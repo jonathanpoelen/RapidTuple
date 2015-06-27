@@ -630,51 +630,52 @@ using detail_::get;
 using detail_::apply_from_tuple;
 
 
-//template<class>
-//struct tuple_size;
+template<class>
+struct tuple_size;
 
-//template<class... Ts>
-//struct tuple_size<tuple<Ts...>>
-//: std::integral_constant<std::size_t, sizeof...(Ts)>
-//{};
+template<std::size_t... Ints, class... Ts>
+struct tuple_size< ::rapidtuple::detail_::tuple_impl<std::index_sequence<Ints...>, Ts...>>
+: std::integral_constant<std::size_t, sizeof...(Ts)>
+{};
 
-//template<class T>
-//struct tuple_size<const T>
-//: std::integral_constant<std::size_t, tuple_size<T>::value>
-//{};
+template<class T>
+struct tuple_size<const T>
+: std::integral_constant<std::size_t, tuple_size<T>::value>
+{};
 
-//template<class T>
-//struct tuple_size<volatile T>
-//: std::integral_constant<std::size_t, tuple_size<T>::value>
-//{};
+template<class T>
+struct tuple_size<volatile T>
+: std::integral_constant<std::size_t, tuple_size<T>::value>
+{};
 
-//template<class T>
-//struct tuple_size<const volatile T>
-//: std::integral_constant<std::size_t, tuple_size<T>::value>
-//{};
+template<class T>
+struct tuple_size<const volatile T>
+: std::integral_constant<std::size_t, tuple_size<T>::value>
+{};
 
 
-//template<std::size_t I, class Tuple>
-//struct tuple_element;
+template<std::size_t I, class Tuple>
+struct tuple_element;
 
-//template<std::size_t I, class... Ts>
-//struct tuple_element<I, tuple<Ts...>>
-//{ using type = typename detail_::at<I, Ts...>::type; };
+template<std::size_t I, std::size_t... Ints, class... Ts>
+struct tuple_element<
+  I, ::rapidtuple::detail_::tuple_impl<std::index_sequence<Ints...>, Ts...>
+>{ using type = typename detail_::at<I, Ts...>::type; };
 
-//template<std::size_t I, class T>
-//struct tuple_element<I, const T>
-//{ using type = const typename std::tuple_element<I, T>::type; };
+template<std::size_t I, class T>
+struct tuple_element<I, const T>
+{ using type = const typename std::tuple_element<I, T>::type; };
 
-//template<std::size_t I, class T>
-//struct tuple_element<I, volatile T>
-//{ using type = volatile typename std::tuple_element<I, T>::type; };
+template<std::size_t I, class T>
+struct tuple_element<I, volatile T>
+{ using type = volatile typename std::tuple_element<I, T>::type; };
 
-//template< std::size_t I, class T>
-//struct tuple_element<I, const volatile T>
-//{ using type = const volatile typename std::tuple_element<I, T>::type; };
+template< std::size_t I, class T>
+struct tuple_element<I, const volatile T>
+{ using type = const volatile typename std::tuple_element<I, T>::type; };
 
-//template<std::size_t I, class Tuple>
-//using tuple_element_t = typename tuple_element<I, Tuple>::type;
+template<std::size_t I, class Tuple>
+using tuple_element_t = typename tuple_element<I, Tuple>::type;
 
 
 template<class... Ts, class... Us>
