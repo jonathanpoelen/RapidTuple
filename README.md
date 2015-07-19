@@ -1,5 +1,7 @@
 Implementation of tuple with low memory usage of compiler and a quick compilation
 
+[![Build Status](https://travis-ci.org/jonathanpoelen/RapidTuple.svg?branch=master)](https://travis-ci.org/jonathanpoelen/RapidTuple)
+
 Feature
 -------
 
