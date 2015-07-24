@@ -237,39 +237,6 @@ namespace detail_{
   private:
     T x;
   };
-
-
-  template<std::size_t I, class T, class... Ts>
-  struct at;
-
-  template<std::size_t I, class, class, class, class, class, class... Ts>
-  struct strip5 : at<I-5, Ts...>
-  {};
-
-  template<std::size_t I, class T, class... Ts>
-  struct at : strip5<I-1, Ts...>
-  {};
-
-  template<class T, class... Ts>
-  struct at<0, T, Ts...>
-  { using type = T; };
-
-  template<class T, class... Ts>
-  struct at1 { using type = T; };
-  template<class, class T, class... Ts>
-  struct at2 { using type = T; };
-  template<class, class, class T, class... Ts>
-  struct at3 { using type = T; };
-  template<class, class, class, class T, class... Ts>
-  struct at4 { using type = T; };
-  template<class, class, class, class, class T, class... Ts>
-  struct at5 { using type = T; };
-
-  template<class T, class... Ts> struct at<1, T, Ts...> : at1<Ts...> {};
-  template<class T, class... Ts> struct at<2, T, Ts...> : at2<Ts...> {};
-  template<class T, class... Ts> struct at<3, T, Ts...> : at3<Ts...> {};
-  template<class T, class... Ts> struct at<4, T, Ts...> : at4<Ts...> {};
-  template<class T, class... Ts> struct at<5, T, Ts...> : at5<Ts...> {};
 }
 
 
@@ -475,18 +442,19 @@ namespace detail_ {
   }
 
 
+  template<std::size_t I, class T>
+  T get_i(head<I, T> const &);
+
   template<std::size_t I, class Ints, class... Ts>
   //tuple_element_t<I, tuple<Ts...>> &
   constexpr decltype(auto) get(tuple_impl<Ints, Ts...> & t) {
-    return static_cast<head<
-      I, typename at<I, Ts...>::type
-    >&>(t).get();
+    return static_cast<head<I, decltype(get_i<I>(t))>&>(t).get();
   }
 
   template<std::size_t I, class Ints, class... Ts>
   //tuple_element_t<I, tuple<Ts...>> &&
   constexpr decltype(auto) get(tuple_impl<Ints, Ts...> && t) {
-    using T = typename at<I, Ts...>::type;
+    using T = decltype(get_i<I>(t));
     return static_cast<T&&>(
       static_cast<head<I, T>&&>(t).get()
     );
@@ -495,9 +463,7 @@ namespace detail_ {
   template<std::size_t I, class Ints, class... Ts>
   //tuple_element_t<I, tuple<Ts...>> const &
   constexpr decltype(auto) get(tuple_impl<Ints, Ts...> const & t) {
-    return static_cast<head<
-      I, typename at<I, Ts...>::type
-    > const &>(t).get();
+    return static_cast<head<I, decltype(get_i<I>(t))> const &>(t).get();
   }
 
 
@@ -682,7 +648,7 @@ struct tuple_size< ::rapidtuple::detail_::tuple_impl<std::index_sequence<Ints...
 template<std::size_t I, std::size_t... Ints, class... Ts>
 struct tuple_element<
   I, ::rapidtuple::detail_::tuple_impl<std::index_sequence<Ints...>, Ts...>
->{ using type = typename ::rapidtuple::detail_::at<I, Ts...>::type; };
+>{ using type = decltype(::rapidtuple::detail_::get_i<I>(std::declval< ::rapidtuple::detail_::tuple_impl<std::index_sequence<Ints...>, Ts...>&>())); };
 
 
 template<class... Ts, class Alloc>

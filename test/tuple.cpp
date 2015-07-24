@@ -59,12 +59,7 @@ int main() {
   TEST(&&);
   TEST(const &);
 
-#undef SAME
 #undef TEST
-
-#define SAME(t, Q)\
-  Check<decltype(std::get<t>(std::declval<T1 Q>()))>() =\
-  Check<decltype(rapidtuple::get<t>(std::declval<T2 Q>()))>()
 
 #define TEST(Q)\
   SAME(int,Q);\
