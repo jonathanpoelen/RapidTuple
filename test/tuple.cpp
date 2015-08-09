@@ -6,6 +6,9 @@
 #include <cassert>
 #include <sstream>
 #include <iostream>
+
+#include <functional> // std::cref
+
 #include "rapidtuple/tuple.hpp"
 
 template<class>
@@ -15,7 +18,7 @@ struct Check {};
   auto const & xxxx_a = a;\
   auto const & xxxx_b = b;\
   if (xxxx_a != xxxx_b) {\
-    std::cerr << xxxx_a << "---" << __LINE__ << "---\n" << xxxx_b << "\n"; \
+    std::cerr << "--- line " << __LINE__ << " ---\n  " << #a << " != " #b << "\n  " << xxxx_a << " != " << xxxx_b << "\n"; \
     return 1; \
   }\
 } while(0)
@@ -75,8 +78,8 @@ int main() {
 #undef TEST
   }
   {
-    using T1 = rapidtuple::tuple<int, int>;
-    using T2 = rapidtuple::tuple<long, long>;
+    using T1 = rapidtuple::tuple<long, long>;
+    using T2 = rapidtuple::tuple<int, int>;
     T1 t1;
     t1 = T1{1,2};
     t1 = T1{1,std::ignore};
@@ -260,9 +263,33 @@ int main() {
   {
     rapidtuple::tuple<int,int> t{2,5};
     int x = 0;
-    CHECK_EQUAL(7, (apply_from_tuple(t, [&x](auto & e) { x+=e; }), x));
+    CHECK_EQUAL(7, (each_from_tuple([&x](auto e) { x+=e; }, t), x));
+    CHECK_EQUAL(12, (each_from_tuple([&x](auto e) { x+=e; }, t, std::index_sequence<1>{}), x));
+    using rapidtuple::each_from_tuple;
+    CHECK_EQUAL(10, (each_from_tuple([&x](auto e) { x+=e; }, std::make_tuple(-2,3), std::index_sequence<0>{}), x));
   }
-  
+
+  {
+    rapidtuple::tuple<int,int> t{2,5};
+    CHECK_EQUAL(7, apply_from_tuple([](int x, int y) { return x + y; }, t));
+    CHECK_EQUAL(5, apply_from_tuple([](int x) { return x; }, t, std::index_sequence<1>{}));
+    using rapidtuple::apply_from_tuple;
+    CHECK_EQUAL(10, apply_from_tuple([](int x, int y, int z) { return x+y+z; }, std::make_tuple(-2,3,9)));
+  }
+
+  {
+    rapidtuple::tuple<int,int> t{2,5};
+    struct to_long { long operator()(int i) const { return i; } };
+    Check<rapidtuple::tuple<long,long>>{} = Check<decltype(transform_from_tuple(to_long{}, t))>{};
+    struct to_void { void operator()(int) const { } };
+    Check<rapidtuple::tuple<rapidtuple::ignore_t>>{} = Check<decltype(transform_from_tuple(to_void{}, t, std::index_sequence<0>{}))>{};
+  }
+
+  {
+    int x = 1;
+    Check<rapidtuple::tuple<int const &>>{} = Check<decltype(rapidtuple::make_tuple(std::cref(x)))>{};
+  }
+
   {
     rapidtuple::tuple<int,int> t1{2,4};
     if (!(t1 == t1)) {

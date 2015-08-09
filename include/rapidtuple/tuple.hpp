@@ -62,13 +62,15 @@ namespace detail_ {
   template<class T>
   struct remove_reference_wrapper<std::reference_wrapper<T>>
   { using type = T&; };
+
+  template<class T>
+  using remove_reference_wrapper_t = typename remove_reference_wrapper<T>::type;
 }
 
 
 template<class... Ts>
-constexpr tuple<detail_::remove_reference_wrapper<std::decay_t<Ts>>...>
-make_tuple(Ts &&... args) {
-  return {std::forward<Ts>(args)...};
+constexpr auto make_tuple(Ts &&... args) {
+  return tuple<detail_::remove_reference_wrapper_t<std::decay_t<Ts>>...>{std::forward<Ts>(args)...};
 }
 
 
@@ -106,6 +108,8 @@ constexpr auto tuple_cat(Tuples&&... tuples) {
   >::impl(std::forward<Tuples>(tuples)...);
 }
 
+using ignore_t = std::remove_const_t<decltype(std::ignore)>;
+
 
 namespace detail_{
   template<class T> struct ref { T & x; };
@@ -120,6 +124,8 @@ namespace detail_{
   struct empty_not_final<tuple_impl<Ts...>>
   { constexpr static bool value = false; };
 
+  struct noop_ {};
+
   template<std::size_t I, class T, bool = empty_not_final<T>::value>
   struct head : private T
   {
@@ -127,7 +133,7 @@ namespace detail_{
     constexpr head(head &&) = default;
     constexpr head(head const &) = default;
 
-    constexpr head(decltype(std::ignore)) {}
+    constexpr head(ignore_t) {}
 
     constexpr head(default_element_t) : T{} {}
 
@@ -154,7 +160,7 @@ namespace detail_{
     {}
 
     template<class Alloc, class = disable_is_not_uses_allocator<Alloc>>
-    constexpr head(std::allocator_arg_t, Alloc const & a, decltype(std::ignore))
+    constexpr head(std::allocator_arg_t, Alloc const & a, ignore_t)
     : T{a}
     {}
 
@@ -185,7 +191,7 @@ namespace detail_{
   struct head<I, T, false>
   {
     constexpr head() : x{} {}
-    constexpr head(decltype(std::ignore)) {}
+    constexpr head(ignore_t) {}
     constexpr head(head &&) = default;
     constexpr head(head const &) = default;
 
@@ -208,7 +214,7 @@ namespace detail_{
     {}
 
     template<class Alloc, class = disable_is_not_uses_allocator<Alloc>>
-    constexpr head(std::allocator_arg_t, Alloc const & a, decltype(std::ignore))
+    constexpr head(std::allocator_arg_t, Alloc const & a, ignore_t)
     : x{a}
     {}
 
@@ -237,6 +243,90 @@ namespace detail_{
   private:
     T x;
   };
+
+  // (GCC) disable: temporary bound to head::x only persists until the constructor exits [-Wextra]
+  template<std::size_t I, class T>
+  struct head<I, T&, false>
+  {
+    constexpr head(head &&) = default;
+    constexpr head(head const &) = default;
+
+    template<class U>
+    constexpr head(U && arg)
+    : x(std::forward<U>(arg))
+    {}
+
+    template<class Alloc, class... Ts>
+    constexpr head(std::allocator_arg_t, Alloc const &, Ts && ... args)
+    : x(std::forward<Ts>(args)...)
+    {}
+
+    head & operator=(head && other)
+    noexcept(std::is_nothrow_move_assignable<T&>::value) {
+      x = std::forward<T&>(other.get());
+      return *this;
+    }
+
+    head & operator=(head const & other) {
+      x = other.get();
+      return *this;
+    }
+
+    T & get() noexcept { return x; }
+    T & get() const { return x; }
+
+    operator ref<T&> () { return {x}; }
+    operator cref<T&> () const { return {x}; }
+
+  private:
+    T & x;
+  };
+
+  // (Clang) disable ambiguisity
+  template<std::size_t I>
+  struct head<I, ignore_t, true>
+  : ignore_t
+  {
+    template<class U>
+    constexpr head(U const &)
+    {}
+
+    template<class Alloc, class... Ts>
+    constexpr head(std::allocator_arg_t, Alloc const &, Ts const & ...)
+    {}
+
+    head & operator=(head &&) noexcept {}
+    head & operator=(head const &) {}
+
+    ignore_t & get() noexcept { return static_cast<ignore_t&>(*this); }
+    ignore_t const & get() const { return static_cast<ignore_t const&>(*this); }
+
+    operator ref<ignore_t> () { return {get()}; }
+    operator cref<ignore_t> () const { return {get()}; }
+  };
+
+  template<std::size_t I>
+  struct head<I, ignore_t const, false>
+  : ignore_t
+  {
+    template<class U>
+    constexpr head(U const &)
+    {}
+
+    template<class Alloc, class... Ts>
+    constexpr head(std::allocator_arg_t, Alloc const &, Ts const & ...)
+    {}
+
+    head & operator=(head &&) noexcept {}
+    head & operator=(head const &) {}
+    head & operator=(ignore_t) = delete;
+
+    ignore_t const & get() noexcept { return static_cast<ignore_t const&>(*this); }
+    ignore_t const & get() const { return static_cast<ignore_t const&>(*this); }
+
+    operator ref<ignore_t> () { return {get()}; }
+    operator cref<ignore_t const> () const { return {get()}; }
+  };
 }
 
 
@@ -250,9 +340,10 @@ namespace detail_ {
       std::is_convertible<T, U>::value
   > {};
 
-  template<class U> struct enable_if_convertible<decltype(std::ignore), U> { using type = void; };
-  template<class U> struct enable_if_convertible<decltype(std::ignore)&, U> { using type = void; };
-  template<class U> struct enable_if_convertible<decltype(std::ignore)&&, U> { using type = void; };
+  template<class U> struct enable_if_convertible<ignore_t, U> { using type = void; };
+  template<class U> struct enable_if_convertible<ignore_t&, U> { using type = void; };
+  template<class U> struct enable_if_convertible<ignore_t&&, U> { using type = void; };
+  template<class U> struct enable_if_convertible<ignore_t const &, U> { using type = void; };
 
   template<std::size_t... Ints, class... Ts>
   struct tuple_impl<std::index_sequence<Ints...>, Ts...>
@@ -482,32 +573,82 @@ namespace detail_ {
     return cref<T>(t).x;
   }
 
+  template<class Tuple>
+  using index_sequence_from_tuple = std::make_index_sequence<std::tuple_size<std::decay_t<Tuple>>::value>;
 
-  template<class Fn, std::size_t... Ints, class... Ts>
-  Fn apply_from_tuple(tuple_impl<std::index_sequence<Ints...>, Ts...> const & t, Fn fn)
+  template<class Fn, class Tuple, class TInt, TInt... Ints>
+  Fn each_from_tuple(Fn fn, Tuple && t, std::integer_sequence<TInt, Ints...>)
   {
-    void(std::initializer_list<int>{(void(
-      fn(static_cast<head<Ints, Ts> const &>(t).get())
-    ), 1)...});
+    void(std::initializer_list<int>{(void(fn(get<Ints>(std::forward<Tuple>(t)))), 1)...});
     return fn;
   }
 
-  template<class Fn, std::size_t... Ints, class... Ts>
-  Fn apply_from_tuple(tuple_impl<std::index_sequence<Ints...>, Ts...> && t, Fn fn)
+  template<class Tuple, class Fn>
+  Fn each_from_tuple(Fn fn, Tuple && t)
   {
-    void(std::initializer_list<int>{(void(
-      fn(static_cast<Ts&&>(static_cast<head<Ints, Ts> &>(t).get()))
-    ), 1)...});
+    each_from_tuple<Fn&>(fn, std::forward<Tuple>(t), index_sequence_from_tuple<Tuple>{});
     return fn;
   }
 
-  template<class Fn, std::size_t... Ints, class... Ts>
-  Fn apply_from_tuple(tuple_impl<std::index_sequence<Ints...>, Ts...> & t, Fn fn)
+
+  template<class Fn, class Tuple, class TInt, TInt... Ints>
+  decltype(auto) apply_from_tuple(Fn && fn, Tuple && t, std::integer_sequence<TInt, Ints...>)
   {
-    void(std::initializer_list<int>{(void(
-      fn(static_cast<head<Ints, Ts> &>(t).get())
-    ), 1)...});
-    return fn;
+    return std::forward<Fn>(fn)(get<Ints>(t)...);
+  }
+
+  template<class Fn, class Tuple, std::size_t... Ints, class... Ts>
+  decltype(auto) apply_from_tuple(Fn && fn, Tuple && t)
+  {
+    return apply_from_tuple(std::forward<Fn>(fn), std::forward<Tuple>(t), index_sequence_from_tuple<Tuple>{});
+  }
+
+
+  template<class T>
+  struct to_tuple_element
+  {
+    using type = remove_reference_wrapper_t<std::decay_t<T>>;
+  };
+
+  template<>
+  struct to_tuple_element<void>
+  {
+    using type = ignore_t;
+  };
+
+  template<class Fn>
+  struct silent_fn
+  {
+    Fn & fn_;
+
+    silent_fn(Fn & fn) : fn_(fn) {}
+
+    template<class Arg>
+    ignore_t operator()(Arg&& arg) const {
+      fn_(std::forward<Arg>(arg));
+      return {};
+    }
+  };
+
+  template<class T, class Fn>
+  using wrap_fn = std::conditional_t<std::is_same<T, void>::value, silent_fn<Fn>, Fn&>;
+
+
+  template<class Fn, class Tuple, class TInt, TInt... Ints>
+  auto transform_from_tuple(Fn fn, Tuple && t, std::integer_sequence<TInt, Ints...>)
+  {
+     return tuple_impl<
+       std::integer_sequence<size_t, Ints...>,
+       typename to_tuple_element<decltype(fn(get<Ints>(std::forward<Tuple>(t))))>::type...
+     >(
+       wrap_fn<decltype(fn(get<Ints>(std::forward<Tuple>(t)))), Fn>(fn)(get<Ints>(std::forward<Tuple>(t)))...
+     );
+  }
+
+  template<class Fn, class Tuple>
+  auto transform_from_tuple(Fn fn, Tuple && t)
+  {
+     return transform_from_tuple<Fn&>(fn, std::forward<Tuple>(t), index_sequence_from_tuple<Tuple>{});
   }
 
 
@@ -629,7 +770,9 @@ namespace detail_ {
 }
 
 using detail_::get;
+using detail_::each_from_tuple;
 using detail_::apply_from_tuple;
+using detail_::transform_from_tuple;
 
 using std::tuple_size;
 using std::tuple_element;
