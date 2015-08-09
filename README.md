@@ -14,45 +14,22 @@ Feature
 
 - `tuple_set<T...>`: Fails to compile if the tuple has more than one element of type T.
 
-- `Fn each_from_tuple(fn, tuple)`:  Call function on each element of a tuple.
-- `Fn each_from_tuple(fn, tuple, std::index_sequence<I...>)`:  Call function on each index I of a tuple.
+- `Fn each_from_tuple(Fn, Tuple)`:  Call function on each element of a tuple.
+- `Fn each_from_tuple(Fn, Tuple, std::index_sequence<I...>)`:  Call function on each index I of a tuple.
 
-- `decltype(auto) apply_from_tuple(fn, tuple)`:  Call function with arguments from a tuple.
-- `decltype(auto) apply_from_tuple(fn, tuple, std::index_sequence<I...>)`:  Call function with index I from a tuple.
+- `decltype(auto) apply_from_tuple(Fn, Tuple)`:  Call function with arguments from a tuple.
+- `decltype(auto) apply_from_tuple(Fn, Tuple, std::index_sequence<I...>)`:  Call function with index I from a tuple.
 
-- `tuple<decltype(fn(get<...>(tuple)...))> transform_from_tuple(fn, tuple)`:  Same as `apply_from_tuple`, but returns a tuple. The type `void` is automatically converted to `ignore_t`.
-- `tuple<decltype(fn(get<I>(t)...))> transform_from_tuple(fn, tuple, std::index_sequence<I...>)`:  Same, but with specified indexes.
+- `tuple<decltype(fn(get<0>(tuple), ...))> transform_from_tuple(Fn, Tuple)`:  Same as `apply_from_tuple`, but returns a tuple. The type `void` is automatically converted to `ignore_t`.
+- `tuple<decltype(fn(get<I>(tuple)...))> transform_from_tuple(Fn, Tuple, std::index_sequence<I...>)`:  Same, but with specified indexes.
 
+- `index_sequence_from_tuple<Tuple>` = `std::make_index_sequence<std::tuple_size<std::decay_t<Tuple>>::value>`
 
 Documentation
 -------------
 
 See [std::tuple](http://en.cppreference.com/w/cpp/utility/tuple)
 
-
-Differences
------------
-
-```c++
-struct X
-{
-  X() = delete;
-};
-
-int main()
-{
-  using T1 = std::tuple<int, X>;
-  using T2 = rapidtuple::tuple<int, X>;
-
-  static_assert(std::is_constructible<X>::value, ""); // error
-  static_assert(std::is_constructible<T1>::value, ""); // ok
-  static_assert(std::is_constructible<T2>::value, ""); // ok
-
-  X{}; // ok
-  T1{}; // error
-  T2{}; // ok
-}
-```
 
 Bench
 -----
@@ -104,5 +81,30 @@ Bench
 
 ./get_type.cpp clang++-3.6 -DNAMESPACE=std          0:00.63s  65328k
 ./get_type.cpp clang++-3.6 -DNAMESPACE=RapidTuple   0:00.44s  55892k
+```
+
+
+Differences
+-----------
+
+```c++
+struct X
+{
+  X() = delete;
+};
+
+int main()
+{
+  using T1 = std::tuple<int, X>;
+  using T2 = rapidtuple::tuple<int, X>;
+
+  static_assert(std::is_constructible<X>::value, ""); // error
+  static_assert(std::is_constructible<T1>::value, ""); // ok
+  static_assert(std::is_constructible<T2>::value, ""); // ok
+
+  X{}; // ok
+  T1{}; // error
+  T2{}; // ok
+}
 ```
 

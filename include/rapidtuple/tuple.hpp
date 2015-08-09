@@ -20,8 +20,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.*/
 
-#ifndef rapidtuple_TUPLE_HPP
-#define rapidtuple_TUPLE_HPP
+#ifndef RAPIDTUPLE_TUPLE_HPP
+#define RAPIDTUPLE_TUPLE_HPP
 
 #include <tuple> //std::ignore_t, std::tuple_size, std::tuple_element
 #include <utility>
@@ -111,6 +111,10 @@ constexpr auto tuple_cat(Tuples&&... tuples) {
 using ignore_t = std::remove_const_t<decltype(std::ignore)>;
 
 
+template<class Tuple>
+using index_sequence_from_tuple = std::make_index_sequence<std::tuple_size<std::decay_t<Tuple>>::value>;
+
+
 namespace detail_{
   template<class T> struct ref { T & x; };
   template<class T> struct cref { T const & x; };
@@ -123,8 +127,6 @@ namespace detail_{
   template<class... Ts>
   struct empty_not_final<tuple_impl<Ts...>>
   { constexpr static bool value = false; };
-
-  struct noop_ {};
 
   template<std::size_t I, class T, bool = empty_not_final<T>::value>
   struct head : private T
@@ -573,8 +575,6 @@ namespace detail_ {
     return cref<T>(t).x;
   }
 
-  template<class Tuple>
-  using index_sequence_from_tuple = std::make_index_sequence<std::tuple_size<std::decay_t<Tuple>>::value>;
 
   template<class Fn, class Tuple, class TInt, TInt... Ints>
   Fn each_from_tuple(Fn fn, Tuple && t, std::integer_sequence<TInt, Ints...>)
