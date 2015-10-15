@@ -29,10 +29,10 @@ int main() {
     using T1 = std::tuple<TYPE>;
     using T2 = rapidtuple::tuple<TYPE>;
 #undef TYPE
-    
+
     static_assert(std::tuple_size<T1>::value == std::tuple_size<T2>::value, "different size");
     static_assert(std::tuple_size<T1>::value == rapidtuple::tuple_size<T2>::value, "different size");
-    
+
     Check<std::tuple_element_t<1, T1>>{} = Check<std::tuple_element_t<1, T2>>{};
     Check<std::tuple_element_t<1, T1>>{} = Check<rapidtuple::tuple_element_t<1, T2>>{};
 
@@ -262,6 +262,12 @@ int main() {
     Check<decltype(rapidtuple::tuple_cat(
       std::declval<rapidtuple::tuple<int>&>(), std::declval<rapidtuple::tuple<float,double>&>()
     ))>() = Check<rapidtuple::tuple<int,float,double>>();
+  }
+
+  {
+    int i;
+    Check<decltype(rapidtuple::tie(i,i))>() = Check<rapidtuple::tuple<int&, int&>>();
+    Check<decltype(rapidtuple::forward_as_tuple(i,1))>() = Check<rapidtuple::tuple<int&, int&&>>();
   }
 
   {

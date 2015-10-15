@@ -76,13 +76,13 @@ constexpr auto make_tuple(Ts &&... args) {
 
 template<class... Ts>
 constexpr tuple<Ts&...> tie(Ts&... args) noexcept {
-  return {args...};
+  return tuple<Ts&...>{args...};
 }
 
 
 template<class... Ts>
 constexpr tuple<Ts&&...> forward_as_tuple(Ts&&... args) noexcept {
-  return {std::forward<Ts>(args)...};
+  return tuple<Ts&&...>{std::forward<Ts>(args)...};
 }
 
 
@@ -523,8 +523,7 @@ namespace detail_ {
 
   // inexplicable (tuple<int>({1}) -> tuple_impl<std::index_sequence<0>>) ???
   template<>
-  struct tuple_impl<std::index_sequence<0>>
-  {};
+  struct tuple_impl<std::index_sequence<0>>;
 
   template<std::size_t... Ints, class... Ts, class... Us>
   void swap(
