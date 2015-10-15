@@ -102,7 +102,7 @@ constexpr auto tuple_cat(Tuples&&... tuples) {
   return detail_::tuple_concater<
       detail_::pack<>,
       detail_::pack<
-        std::make_index_sequence<std::tuple_size<Tuples>::value>...
+        std::make_index_sequence<std::tuple_size<std::decay_t<Tuples>>::value>...
       >,
       detail_::pack<Tuples...>
   >::impl(std::forward<Tuples>(tuples)...);

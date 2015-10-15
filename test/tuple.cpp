@@ -258,6 +258,10 @@ int main() {
     Check<decltype(rapidtuple::tuple_cat(
       rapidtuple::tuple<int>{},rapidtuple::tuple<float,double>{}
     ))>() = Check<rapidtuple::tuple<int,float,double>>();
+
+    Check<decltype(rapidtuple::tuple_cat(
+      std::declval<rapidtuple::tuple<int>&>(), std::declval<rapidtuple::tuple<float,double>&>()
+    ))>() = Check<rapidtuple::tuple<int,float,double>>();
   }
 
   {
