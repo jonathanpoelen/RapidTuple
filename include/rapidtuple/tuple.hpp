@@ -329,10 +329,8 @@ namespace detail_{
     operator ref<ignore_t> () { return {get()}; }
     operator cref<ignore_t const> () const { return {get()}; }
   };
-}
 
 
-namespace detail_ {
   using std::swap;
 
   template<class...> struct types_list;
@@ -348,8 +346,8 @@ namespace detail_ {
   template<class U> struct enable_if_convertible<ignore_t const &, U> { using type = void; };
 
   template<std::size_t... Ints, class... Ts>
-  struct tuple_impl<std::index_sequence<Ints...>, Ts...>
-  : head<Ints, Ts>...
+  class tuple_impl<std::index_sequence<Ints...>, Ts...>
+  : public head<Ints, Ts>...
   {
     using index_sequence_ = std::index_sequence<Ints...>;
 
