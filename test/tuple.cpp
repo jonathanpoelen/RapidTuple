@@ -271,6 +271,14 @@ int main() {
   }
 
   {
+#define TEST(T, I)\
+  std::integral_constant<std::size_t, I>() =\
+  std::integral_constant<std::size_t, rapidtuple::tuple_index_of<T, rapidtuple::tuple<int, float>>::value>()
+    TEST(int, 0);
+    TEST(float, 1);
+#undef TEST
+  }
+  {
     rapidtuple::tuple<int,int> t{2,5};
     int x = 0;
     CHECK_EQUAL(7, (each_from_tuple([&x](auto e) { x+=e; }, t), x));

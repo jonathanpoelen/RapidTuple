@@ -601,6 +601,15 @@ namespace detail_{
   }
 
 
+  template<class T, std::size_t I>
+  constexpr std::integral_constant<std::size_t, I> index_of_impl(head<I, T> const &);
+
+  template<class T, class Tuple>
+  struct tuple_index_of
+  : decltype(index_of_impl<T>(std::declval<Tuple&>()))
+  {};
+
+
   template<class T>
   struct to_tuple_element
   {
@@ -771,6 +780,7 @@ using detail_::each_from_tuple;
 using detail_::apply_from_tuple;
 using detail_::transform_from_tuple;
 
+using detail_::tuple_index_of;
 using std::tuple_size;
 using std::tuple_element;
 using std::tuple_element_t;
