@@ -1,71 +1,91 @@
-function(add_exec_test name file)
-	add_executable(${name} ${file})
-	add_test(test_${name} ${name})
-endfunction(add_exec_test)
-
-function(create_exec_test name)
-	add_exec_test(${name} ${name}.cpp)
-endfunction(create_exec_test)
-
-add_definitions(
+if (NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
+  add_definitions(
     -Wall
     -Wextra
+    -Wswitch-enum
+    -Wlogical-op
     -Wundef
     -Wcast-align
     -Wformat-security
     -Wunreachable-code
     -Wformat=2
-    -Werror-implicit-function-declaration
     -Wfloat-equal
-#     -Wshadow
+    -Wshadow
     -Wpointer-arith
     -Wconversion
-    -Wno-missing-declarations
+    -Wmissing-declarations
     -Wmissing-noreturn
     -Wmissing-format-attribute
     -Wpacked
     -Wredundant-decls
     -Winline
-    -Winit-self
+    -Wdouble-promotion
     -Wcast-qual
-    -Wnon-virtual-dtor
-    -Wno-long-long
-#   -fno-exceptions
-#   -fno-check-new
-#   -fno-common
-    -Woverloaded-virtual
-#   -fno-threadsafe-statics
-#   -fvisibility=hidden
-#   -fvisibility-inlines-hidden
+    -pedantic
+    -Wmissing-include-dirs
+    -Warray-bounds=2
     -Wold-style-cast
-    -Wmain
-    -Wparentheses
-    -fstrict-overflow
-    -Wstrict-overflow=5
-#   -Wno-overflow
-#   -Wno-unused-function
+    -Woverloaded-virtual
+    -Wnon-virtual-dtor
+    -Wzero-as-null-pointer-constant
+    -Wsuggest-override
 
-#   -Werror
+#    -Werror
     -pedantic
 
-    -Wno-narrowing
-    -Wno-conversion
-    -std=c++1y
-#    -std=c++11
-#    -fsanitize=address
-
-#   -Wfatal-errors
-)
-
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-  add_definitions(
-    -Wno-mismatched-tags
+#    -Wfatal-errors
   )
-elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-  add_definitions(
-    -Wtrampolines
-    -Wdouble-promotion
-  )
+
+  if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+    add_definitions(
+      -Weverything
+      -Wno-mismatched-tags
+
+      -std=c++14
+    )
+  #CMAKE_COMPILER_IS_GNUCXX
+  elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+    add_definitions(
+      -Wtrampolines
+      -Wdouble-promotion
+    )
+    if (6.0 VERSION_LESS ${CMAKE_CXX_COMPILER_VERSION})
+      add_definitions(
+        -Wnull-dereference
+        -Wduplicated-cond
+        -Wmisleading-indentation
+      )
+    else()
+      add_definitions(
+        -std=c++11
+      )
+    endif()
+  endif()
+
+  option(SANITIZES "enable sanitizers." OFF)
+
+  if (SANITIZES)
+    add_definitions(
+      -fsanitize=address
+      -fsanitize=leak
+      -fsanitize=undefined
+    )
+    #link_libraries(-lasan)
+  endif()
+
+  if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_definitions(-D_GLIBCXX_DEBUG)
+    #add_definitions(-D_GLIBCXX_ASSERTIONS)
+  endif()
+
+  option(CXX_STD "language standard version (c++11, c++14, etc)." OFF)
+
+  if (CXX_STD)
+    add_definitions(
+      -std=${CXX_STD}
+    )
+  endif()
+
 #elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel")
 #  # using Intel C++
 #elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
