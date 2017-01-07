@@ -94,9 +94,9 @@ int main() {
   {
     struct T{
       T() { std::cout << "T()\n"; }
-      T(int& i) { std::cout << "T(" << i << "&)\n"; }
+      T(int& i) = delete; // { std::cout << "T(" << i << "&)\n"; }
       T(int&& i) { std::cout << "T(" << i << "&&)\n"; }
-      T(int const & i) { std::cout << "T(" << i << " const &)\n"; }
+      T(int const & i) = delete; // { std::cout << "T(" << i << " const &)\n"; }
       T(T &) { std::cout << "T(T &)\n"; }
       T(T &&) { std::cout << "T(T &&)\n"; }
       T(T const &) { std::cout << "T(T const &)\n"; }
@@ -281,10 +281,10 @@ int main() {
   {
     rapidtuple::tuple<int,int> t{2,5};
     int x = 0;
-    CHECK_EQUAL(7, (each_from_tuple([&x](auto e) { x+=e; }, t), x));
-    CHECK_EQUAL(12, (each_from_tuple([&x](auto e) { x+=e; }, t, std::index_sequence<1>{}), x));
+    CHECK_EQUAL(7, ((void)(each_from_tuple([&x](auto e) { x+=e; }, t)), x));
+    CHECK_EQUAL(12, ((void)(each_from_tuple([&x](auto e) { x+=e; }, t, std::index_sequence<1>{})), x));
     using rapidtuple::each_from_tuple;
-    CHECK_EQUAL(10, (each_from_tuple([&x](auto e) { x+=e; }, std::make_tuple(-2,3), std::index_sequence<0>{}), x));
+    CHECK_EQUAL(10, ((void)(each_from_tuple([&x](auto e) { x+=e; }, std::make_tuple(-2,3), std::index_sequence<0>{})), x));
   }
 
   {

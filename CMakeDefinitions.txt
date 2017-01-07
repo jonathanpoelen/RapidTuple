@@ -1,35 +1,5 @@
 if (NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
   add_definitions(
-    -Wall
-    -Wextra
-    -Wswitch-enum
-    -Wlogical-op
-    -Wundef
-    -Wcast-align
-    -Wformat-security
-    -Wunreachable-code
-    -Wformat=2
-    -Wfloat-equal
-    -Wshadow
-    -Wpointer-arith
-    -Wconversion
-    -Wmissing-declarations
-    -Wmissing-noreturn
-    -Wmissing-format-attribute
-    -Wpacked
-    -Wredundant-decls
-    -Winline
-    -Wdouble-promotion
-    -Wcast-qual
-    -pedantic
-    -Wmissing-include-dirs
-    -Warray-bounds=2
-    -Wold-style-cast
-    -Woverloaded-virtual
-    -Wnon-virtual-dtor
-    -Wzero-as-null-pointer-constant
-    -Wsuggest-override
-
 #    -Werror
     -pedantic
 
@@ -39,13 +9,54 @@ if (NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
   if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     add_definitions(
       -Weverything
+      -Wno-documentation-unknown-command
+      #-Wno-range-loop-analysis
+      -Wno-disabled-macro-expansion
+      -Wno-c++98-compat
+      -Wno-c++98-compat-pedantic
       -Wno-mismatched-tags
+      -Wno-padded
+      -Wno-shadow
+      -Wno-global-constructors
+      -Wno-weak-vtables
+      -Wno-exit-time-destructors
+
+      -Wno-covered-switch-default
 
       -std=c++14
     )
   #CMAKE_COMPILER_IS_GNUCXX
   elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
     add_definitions(
+      -Wall
+      -Wextra
+      -Wswitch-enum
+      -Wlogical-op
+      -Wundef
+      -Wcast-align
+      -Wformat-security
+      -Wunreachable-code
+      -Wformat=2
+      -Wfloat-equal
+      -Wshadow
+      -Wpointer-arith
+      -Wconversion
+      -Wmissing-declarations
+      -Wmissing-noreturn
+      -Wmissing-format-attribute
+      -Wpacked
+      -Wredundant-decls
+      -Winline
+      -Wdouble-promotion
+      -Wcast-qual
+      -pedantic
+      -Wmissing-include-dirs
+      -Warray-bounds=2
+      -Wold-style-cast
+      -Woverloaded-virtual
+      -Wnon-virtual-dtor
+      -Wzero-as-null-pointer-constant
+      -Wsuggest-override
       -Wtrampolines
       -Wdouble-promotion
     )
@@ -57,7 +68,7 @@ if (NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
       )
     else()
       add_definitions(
-        -std=c++11
+        -std=c++14
       )
     endif()
   endif()

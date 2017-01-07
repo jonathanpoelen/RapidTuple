@@ -28,6 +28,9 @@ SOFTWARE.*/
 #include <type_traits>
 #include <initializer_list>
 
+#include <falcon/cxx/cxx.hpp>
+
+
 namespace rapidtuple {
 
 namespace detail_ {
@@ -38,23 +41,9 @@ namespace detail_ {
   struct is_unique {};
 
   template<class... Ts>
-  struct tuple_set_impl : is_unique<Ts>... { // error: you have defined a tuple_set with a type present more than once
-    using type = tuple_impl<std::make_index_sequence<sizeof...(Ts)>, Ts...>;
-  };
-}
+  struct tuple_set_build : is_unique<Ts>... // error: you have defined a tuple_set with a type present more than once
+  { using type = tuple_impl<std::index_sequence_for<Ts...>, Ts...>; };
 
-
-template<class... Ts>
-using tuple = detail_::tuple_impl<std::make_index_sequence<sizeof...(Ts)>, Ts...>;
-
-template<class... Ts>
-using tuple_set = typename detail_::tuple_set_impl<Ts...>::type;
-
-constexpr struct default_element_t {
-  constexpr default_element_t() {}
-} default_element;
-
-namespace detail_ {
   template<class T>
   struct remove_reference_wrapper
   { using type = T; };
@@ -66,6 +55,16 @@ namespace detail_ {
   template<class T>
   using remove_reference_wrapper_t = typename remove_reference_wrapper<T>::type;
 }
+
+
+template<class... Ts>
+using tuple = detail_::tuple_impl<std::index_sequence_for<Ts...>, Ts...>;
+
+template<class... Ts>
+using tuple_set = typename detail_::tuple_set_build<Ts...>::type;
+
+FALCON_EMPTY_CLASS(default_element_t);
+constexpr default_element_t default_element;
 
 
 template<class... Ts>
@@ -246,44 +245,6 @@ namespace detail_{
     T x;
   };
 
-  // (GCC) disable: temporary bound to head::x only persists until the constructor exits [-Wextra]
-  template<std::size_t I, class T>
-  struct head<I, T&, false>
-  {
-    constexpr head(head &&) = default;
-    constexpr head(head const &) = default;
-
-    template<class U>
-    constexpr head(U && arg)
-    : x(std::forward<U>(arg))
-    {}
-
-    template<class Alloc, class... Ts>
-    constexpr head(std::allocator_arg_t, Alloc const &, Ts && ... args)
-    : x(std::forward<Ts>(args)...)
-    {}
-
-    head & operator=(head && other)
-    noexcept(std::is_nothrow_move_assignable<T&>::value) {
-      x = std::forward<T&>(other.get());
-      return *this;
-    }
-
-    head & operator=(head const & other) {
-      x = other.get();
-      return *this;
-    }
-
-    T & get() noexcept { return x; }
-    T & get() const { return x; }
-
-    operator ref<T&> () { return {x}; }
-    operator cref<T&> () const { return {x}; }
-
-  private:
-    T & x;
-  };
-
   // (Clang) disable ambiguisity
   template<std::size_t I>
   struct head<I, ignore_t, true>
@@ -455,52 +416,53 @@ namespace detail_{
     tuple_impl& operator=(tuple_impl const & other) = default;
     tuple_impl& operator=(tuple_impl && other) = default;
 
-
     template<class... Us>
     tuple_impl& operator=(tuple_impl<index_sequence_, Us...> const & other) {
-      (void)std::initializer_list<char>{(void((
+      FALCON_UNPACK(
         static_cast<head<Ints, Ts>&>(*this).get()
         = static_cast<head<Ints, Us> const &>(other).get()
-      )), char())...};
+      );
       return *this;
     }
 
     template<class... Us>
     tuple_impl& operator=(tuple_impl<index_sequence_, Us...> && other) {
-      (void)std::initializer_list<char>{(void((
+      FALCON_UNPACK(
         static_cast<head<Ints, Ts>&>(*this).get()
         = std::move(static_cast<head<Ints, Us>&>(other).get())
-      )), char())...};
+      );
       return *this;
     }
 
 
     template<class U1, class U2>
     tuple_impl& operator=(std::pair<U1, U2> const & p) {
-      (void)std::initializer_list<char>{(void((
-        static_cast<head<Ints, Ts>&>(*this).get() = std::get<Ints>(p)
-      )), char())...};
+      FALCON_UNPACK(
+        static_cast<head<Ints, Ts>&>(*this).get()
+        = std::get<Ints>(p)
+      );
       return *this;
     }
 
     template<class U1, class U2>
     tuple_impl& operator=(std::pair<U1, U2> && p) noexcept {
-      (void)std::initializer_list<char>{(void((
-        static_cast<head<Ints, Ts>&>(*this).get() = std::get<Ints>(std::move(p))
-      )), char())...};
+      FALCON_UNPACK(
+        static_cast<head<Ints, Ts>&>(*this).get()
+        = std::get<Ints>(std::move(p))
+      );
       return *this;
     }
 
 
+    // TODO std::swap -> fn::swap
     void swap(tuple_impl & other)
-    noexcept(noexcept(std::initializer_list<char>{(swap(
-      static_cast<head<Ints, Ts>&>(other).get(),
-      static_cast<head<Ints, Ts>&>(other).get()
-    ), char())...})) {
-      (void)(std::initializer_list<char>{(swap(
-        static_cast<head<Ints, Ts>&>(other).get(),
+    noexcept(noexcept(FALCON_UNPACK(std::swap(
+      std::declval<Ts&>(), std::declval<Ts&>()
+    )))) {
+      FALCON_UNPACK(std::swap(
+        static_cast<head<Ints, Ts>&>(*this).get(),
         static_cast<head<Ints, Ts>&>(other).get()
-      ), char())...});
+      ));
     }
   };
 
@@ -519,14 +481,14 @@ namespace detail_{
     {}
   };
 
-  // inexplicable (tuple<int>({1}) -> tuple_impl<std::index_sequence<0>>) ???
+  // GCC inexplicable (tuple<int>({1}) -> tuple_impl<std::index_sequence<0>>) ???
   template<>
   struct tuple_impl<std::index_sequence<0>>;
 
-  template<std::size_t... Ints, class... Ts, class... Us>
+  template<std::size_t... Ints, class... Ts>
   void swap(
     tuple_impl<std::index_sequence<Ints...>, Ts...> & t1,
-    tuple_impl<std::index_sequence<Ints...>, Us...> & t2
+    tuple_impl<std::index_sequence<Ints...>, Ts...> & t2
   ) noexcept(noexcept(t1.swap(t2))) {
     t1.swap(t2);
   }
@@ -576,7 +538,7 @@ namespace detail_{
   template<class Fn, class Tuple, class TInt, TInt... Ints>
   Fn each_from_tuple(Fn fn, Tuple && t, std::integer_sequence<TInt, Ints...>)
   {
-    void(std::initializer_list<int>{(void(fn(get<Ints>(std::forward<Tuple>(t)))), 1)...});
+    FALCON_UNPACK(fn(get<Ints>(std::forward<Tuple>(t))));
     return fn;
   }
 
