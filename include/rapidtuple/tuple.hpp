@@ -68,8 +68,103 @@ using is_same_as_pack = typename
 
 namespace detail_
 {
+  using std::size_t;
+
+  // TODO
+  template<size_t... Ints>
+  struct tuple_indices {};
+
   template<class... Ts>
-  struct tuple_impl
+  using range_for = brigand::range<std::size_t, 0, sizeof...(Ts)>;
+
+  template<class>
+  struct mpl_list_to_tuple_indices;
+
+  template<class... Ints>
+  struct mpl_list_to_tuple_indices<brigand::list<Ints...>>
+  { using type = tuple_indices<Ints::value...>; };
+
+  template<class... Ts>
+  using tuple_indices_for = typename
+    mpl_list_to_tuple_indices<range_for<Ts...>>::type;
+
+  template<class Ints, class... Ts>
+  struct tuple_impl;
+
+  template<
+    size_t I, class T,
+    bool = std::is_empty<T>::value && !std::is_final<T>::value
+  >
+  struct tuple_leaf;
+
+  template<size_t I, class T>
+  struct tuple_leaf<I, T, true>
+  : private T
+  {
+    tuple_leaf & operator=(const tuple_leaf&) = delete;
+
+    constexpr tuple_leaf()
+    noexcept(std::is_nothrow_default_constructible<T>::value)
+    {}
+
+    template<class Alloc>
+    tuple_leaf(Alloc const & a)
+    : T(allocator_arg_t(), a)
+    {}
+
+    tuple_leaf(tuple_leaf const &) = default;
+    tuple_leaf(tuple_leaf &&) = default;
+
+    template<
+      class U,
+      std::enable_if_t<
+        !std::is_same<uncvref_t<U>, tuple_leaf>::value &&
+        std::is_constructible<T, U>::value,
+        bool
+      > = true
+    >
+    constexpr explicit tuple_leaf(U && v)
+    noexcept(std::is_nothrow_constructible<T, U>::value)
+    : T(std::forward<U>(v))
+    {}
+
+    template<class Alloc, class U>
+    explicit tuple_leaf(Alloc const & a, U && v)
+    : T(allocator_arg_t(), a, std::forward<U>(v))
+    {}
+
+    template<class U>
+    tuple_leaf &
+    operator=(U && v)
+    noexcept(std::is_nothrow_assignable<T&, U>::value)
+    {
+      T::operator=(std::forward<U>(v));
+      return *this;
+    }
+
+    int
+    swap(tuple_leaf & t)
+    // TODO c++17
+    //noexcept(std::is_nothrow_swappable<tuple_leaf>::value)
+    {
+      using std::swap;
+      swap(get(), t);
+      return 0;
+    }
+
+    constexpr T       & get()       noexcept { return static_cast<T       &>(*this); }
+    constexpr T const & get() const noexcept { return static_cast<T const &>(*this); }
+  };
+
+  template<size_t I, class T>
+  struct tuple_leaf<I, T, false>
+  {
+    T value;
+  };
+
+  template<size_t... Ints, class... Ts>
+  struct tuple_impl<tuple_indices<Ints...>, Ts...>
+  : tuple_leaf<Ints, Ts>...
   {
     template<class... Us>
     tuple_impl(Us && ...)
@@ -87,7 +182,9 @@ namespace detail_
 template<class... Ts>
 class tuple
 {
-  using base = detail_::tuple_impl<Ts...>;
+  using indices_ = detail_::tuple_indices_for<Ts...>;
+
+  using base = detail_::tuple_impl<indices_, Ts...>;
   base base_;
 
   template<class T, class U>
@@ -109,12 +206,10 @@ class tuple
   > {};
 
   template<class Tuple>
-  using is_this_tuple_like = brigand::bool_<
+  using is_other_tuple_like = brigand::bool_<
     std::tuple_size<Tuple>::value == sizeof...(Ts) &&
     !std::is_same<uncvref_t<Tuple>, tuple>::value
   >;
-
-  using indices_ = int;
 
   template<class Tuple>
   using tuple_is_implicitly_convertible = brigand::transform<
@@ -137,7 +232,9 @@ public:
 
   // 2 (explicit)
   template<
+    bool Dummy = true,
     std::enable_if_t<
+      Dummy &&
       is_implicitly_convertible<Ts...>::value,
       bool
     > = true
@@ -149,7 +246,9 @@ public:
 
   // 2 (implicit)
   template<
+    bool Dummy = true,
     std::enable_if_t<
+      Dummy &&
       !is_implicitly_convertible<Ts...>::value,
       bool
     > = true
@@ -189,7 +288,7 @@ public:
   template<
     class Tuple,
     std::enable_if_t<
-      is_this_tuple_like<Tuple>::value &&
+      is_other_tuple_like<Tuple>::value &&
       tuple_is_implicitly_convertible<Tuple>::value,
       bool
     > = false
@@ -202,7 +301,7 @@ public:
   template<
     class Tuple,
     std::enable_if_t<
-      is_this_tuple_like<Tuple>::value &&
+      is_other_tuple_like<Tuple>::value &&
       !tuple_is_implicitly_convertible<Tuple>::value,
       bool
     > = false
@@ -213,35 +312,35 @@ public:
 
 
 //   // allocator-extended constructors
-//   template <class Alloc>
-//       tuple(allocator_arg_t, const Alloc& a);
-//   template <class Alloc>
-//       tuple(allocator_arg_t, const Alloc& a, const T&...);
-//   template <class Alloc, class... U>
-//       tuple(allocator_arg_t, const Alloc& a, U&&...);
-//   template <class Alloc>
-//       tuple(allocator_arg_t, const Alloc& a, const tuple&);
-//   template <class Alloc>
-//       tuple(allocator_arg_t, const Alloc& a, tuple&&);
-//   template <class Alloc, class... U>
-//       tuple(allocator_arg_t, const Alloc& a, const tuple<U...>&);
-//   template <class Alloc, class... U>
-//       tuple(allocator_arg_t, const Alloc& a, tuple<U...>&&);
-//   template <class Alloc, class U1, class U2>
-//       tuple(allocator_arg_t, const Alloc& a, const pair<U1, U2>&);
-//   template <class Alloc, class U1, class U2>
-//       tuple(allocator_arg_t, const Alloc& a, pair<U1, U2>&&);
+//   template<class Alloc>
+//       tuple(allocator_arg_t, Alloc const & a);
+//   template<class Alloc>
+//       tuple(allocator_arg_t, Alloc const & a, const T&...);
+//   template<class Alloc, class... U>
+//       tuple(allocator_arg_t, Alloc const & a, U&&...);
+//   template<class Alloc>
+//       tuple(allocator_arg_t, Alloc const & a, const tuple&);
+//   template<class Alloc>
+//       tuple(allocator_arg_t, Alloc const & a, tuple&&);
+//   template<class Alloc, class... U>
+//       tuple(allocator_arg_t, Alloc const & a, const tuple<U...>&);
+//   template<class Alloc, class... U>
+//       tuple(allocator_arg_t, Alloc const & a, tuple<U...>&&);
+//   template<class Alloc, class U1, class U2>
+//       tuple(allocator_arg_t, Alloc const & a, const pair<U1, U2>&);
+//   template<class Alloc, class U1, class U2>
+//       tuple(allocator_arg_t, Alloc const & a, pair<U1, U2>&&);
 //
 //   tuple& operator=(const tuple&);
 //   tuple&
 //       operator=(tuple&&) noexcept(AND(is_nothrow_move_assignable<T>::value ...));
-//   template <class... U>
+//   template<class... U>
 //       tuple& operator=(const tuple<U...>&);
-//   template <class... U>
+//   template<class... U>
 //       tuple& operator=(tuple<U...>&&);
-//   template <class U1, class U2>
+//   template<class U1, class U2>
 //       tuple& operator=(const pair<U1, U2>&); // iff sizeof...(T) == 2
-//   template <class U1, class U2>
+//   template<class U1, class U2>
 //       tuple& operator=(pair<U1, U2>&&); //iffsizeof...(T) == 2
 //
 //   void swap(tuple&) noexcept(AND(swap(declval<T&>(), declval<T&>())...));
@@ -593,7 +692,7 @@ namespace detail_{
     : tuple_leaf<Ints, Ts>(std::allocator_arg_t{}, a, std::forward<Us>(args))...
     {}
 
-    template <class Alloc, class... Us>
+    template<class Alloc, class... Us>
     tuple_impl(std::allocator_arg_t, Alloc const & a, tuple_impl<index_sequence_, Us...> const & other)
     : tuple_leaf<Ints, Ts>(std::allocator_arg_t{}, a,
       static_cast<tuple_leaf<Ints, Us> const &>(other).get()
@@ -615,17 +714,17 @@ namespace detail_{
     {}
 
 
-    template <class Alloc, class U1, class U2>
+    template<class Alloc, class U1, class U2>
     tuple_impl(std::allocator_arg_t, Alloc const & a, std::pair<U1, U2> const & p)
     : tuple_leaf<Ints, Ts>(std::allocator_arg_t{}, a, std::get<Ints>(p))...
     {}
 
-    template <class Alloc, class U1, class U2>
+    template<class Alloc, class U1, class U2>
     tuple_impl(std::allocator_arg_t, Alloc const & a, std::pair<U1, U2> && p)
     : tuple_leaf<Ints, Ts>(std::allocator_arg_t{}, a, std::get<Ints>(std::move(p)))...
     {}
 
-    template <class Alloc, class U1, class U2>
+    template<class Alloc, class U1, class U2>
     tuple_impl(std::allocator_arg_t, Alloc const & a, std::pair<U1, U2> & p)
     : tuple_leaf<Ints, Ts>(std::allocator_arg_t{}, a, std::get<Ints>(static_cast<std::pair<U1, U2> const &>(p)))...
     {}
