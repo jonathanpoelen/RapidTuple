@@ -10,6 +10,7 @@ cmake_minimum_required(VERSION 2.8)
 include(CMakeDefinitions.txt)
 include_directories(include)
 include_directories(modules/falcon.cxx/include)
+include_directories(modules/brigand)
 #add_definitions(-g)
 
 add_executable(tuple_test test/tuple.cpp)

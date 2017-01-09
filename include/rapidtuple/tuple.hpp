@@ -29,7 +29,225 @@ SOFTWARE.*/
 #include <initializer_list>
 
 #include <falcon/cxx/cxx.hpp>
+#include <brigand/brigand.hpp>
 
+
+namespace falcon {
+
+// TODO FALCON_UNPACK : noexcept ?
+
+using allocator_arg_t = std::allocator_arg_t;
+constexpr allocator_arg_t allocator_arg {};
+
+template<class T>
+using uncvref_t = std::remove_cv_t<std::remove_reference_t<T>>;
+
+template<class...>
+using void_t = void;
+
+template<class T, class... Ts>
+using is_same_as_pack = typename
+  std::is_same<brigand::list<T>, brigand::list<Ts...>>::type;
+
+// namespace detail_
+// {
+//   template<class Tuple, class = void>
+//   struct is_tuple_like_impl : std::false_type
+//   {};
+//
+//   template<class Tuple>
+//   struct is_tuple_like_impl<Tuple, void_t<std::tuple_size<T>::type>>
+//   : std::true_type
+//   {};
+// }
+//
+// template<class Tuple>
+// struct is_tuple_like
+// : detail_::is_tuple_like_impl<Tuple>
+// {};
+
+namespace detail_
+{
+  template<class... Ts>
+  struct tuple_impl
+  {
+    template<class... Us>
+    tuple_impl(Us && ...)
+    {}
+  };
+
+  template<class Tuple, class Indices>
+  struct tuple_to_list;
+
+  template<class Tuple, class... Ints>
+  struct tuple_to_list<Tuple, brigand::list<Ints...>>
+  { using type = brigand::list<std::tuple_element_t<Ints::value, Tuple>...>; };
+}
+
+template<class... Ts>
+class tuple
+{
+  using base = detail_::tuple_impl<Ts...>;
+  base base_;
+
+  template<class T, class U>
+  using is_convertible
+    = typename std::is_convertible<T, U>::type;
+
+  template<class... Us>
+  using is_implicitly_convertible
+    = typename std::is_same<
+    brigand::list<is_convertible<Us, Ts>...>,
+    brigand::filled_list<std::true_type, sizeof...(Us)>
+  >::type;
+
+  template<class T, class... Us>
+  struct pack_expands_to_this_tuple
+  : brigand::bool_<
+    sizeof...(Us) == 0 &&
+    std::is_same<tuple, uncvref_t<T>>::value
+  > {};
+
+  template<class Tuple>
+  using is_this_tuple_like = brigand::bool_<
+    std::tuple_size<Tuple>::value == sizeof...(Ts) &&
+    !std::is_same<uncvref_t<Tuple>, tuple>::value
+  >;
+
+  using indices_ = int;
+
+  template<class Tuple>
+  using tuple_is_implicitly_convertible = brigand::transform<
+    typename detail_::tuple_to_list<
+      Tuple,
+      brigand::range<std::size_t, 0, std::tuple_size<Tuple>::value>
+    >::type,
+    brigand::list<Ts...>,
+    brigand::bind<is_convertible, brigand::_1, brigand::_2>
+  >;
+
+public:
+  // TODO optional explicit ctor in C++17
+  // 1
+  explicit tuple() = default;
+  // 9
+  constexpr tuple(tuple && other) = default;
+  // 8
+  constexpr tuple(tuple const & other) = default;
+
+  // 2 (explicit)
+  template<
+    std::enable_if_t<
+      is_implicitly_convertible<Ts...>::value,
+      bool
+    > = true
+  >
+  constexpr tuple(Ts const &... args)
+  noexcept(noexcept(base(args...)))
+  : base_(args...)
+  {}
+
+  // 2 (implicit)
+  template<
+    std::enable_if_t<
+      !is_implicitly_convertible<Ts...>::value,
+      bool
+    > = true
+  >
+  explicit constexpr tuple(Ts const &... args)
+  noexcept(noexcept(base(args...)))
+  : base_(args...)
+  {}
+
+  // 3 (implicit)
+  template<
+    class... Us,
+    std::enable_if_t<
+      !pack_expands_to_this_tuple<Us...>::value &&
+      is_implicitly_convertible<Us&&...>::value,
+      bool
+    > = true
+  >
+  constexpr tuple(Us &&... args)
+  : base_(std::forward<Us>(args)...)
+  {}
+
+  // 3 (explicit)
+  template<
+    class... Us,
+    std::enable_if_t<
+      !pack_expands_to_this_tuple<Us...>::value &&
+      !is_implicitly_convertible<Us&&...>::value,
+      bool
+    > = true
+  >
+  explicit constexpr tuple(Us &&... args)
+  : base_(std::forward<Us>(args)...)
+  {}
+
+  // 4, 5, 6, 7 (implicit)
+  template<
+    class Tuple,
+    std::enable_if_t<
+      is_this_tuple_like<Tuple>::value &&
+      tuple_is_implicitly_convertible<Tuple>::value,
+      bool
+    > = false
+  >
+  constexpr tuple(Tuple && t)
+  : base_(indices_{}, std::forward<Tuple>(t))
+  {}
+
+  // 4, 5, 6, 7 (explicit)
+  template<
+    class Tuple,
+    std::enable_if_t<
+      is_this_tuple_like<Tuple>::value &&
+      !tuple_is_implicitly_convertible<Tuple>::value,
+      bool
+    > = false
+  >
+  explicit constexpr tuple(Tuple && t)
+  : base_(indices_{}, std::forward<Tuple>(t))
+  {}
+
+
+//   // allocator-extended constructors
+//   template <class Alloc>
+//       tuple(allocator_arg_t, const Alloc& a);
+//   template <class Alloc>
+//       tuple(allocator_arg_t, const Alloc& a, const T&...);
+//   template <class Alloc, class... U>
+//       tuple(allocator_arg_t, const Alloc& a, U&&...);
+//   template <class Alloc>
+//       tuple(allocator_arg_t, const Alloc& a, const tuple&);
+//   template <class Alloc>
+//       tuple(allocator_arg_t, const Alloc& a, tuple&&);
+//   template <class Alloc, class... U>
+//       tuple(allocator_arg_t, const Alloc& a, const tuple<U...>&);
+//   template <class Alloc, class... U>
+//       tuple(allocator_arg_t, const Alloc& a, tuple<U...>&&);
+//   template <class Alloc, class U1, class U2>
+//       tuple(allocator_arg_t, const Alloc& a, const pair<U1, U2>&);
+//   template <class Alloc, class U1, class U2>
+//       tuple(allocator_arg_t, const Alloc& a, pair<U1, U2>&&);
+//
+//   tuple& operator=(const tuple&);
+//   tuple&
+//       operator=(tuple&&) noexcept(AND(is_nothrow_move_assignable<T>::value ...));
+//   template <class... U>
+//       tuple& operator=(const tuple<U...>&);
+//   template <class... U>
+//       tuple& operator=(tuple<U...>&&);
+//   template <class U1, class U2>
+//       tuple& operator=(const pair<U1, U2>&); // iff sizeof...(T) == 2
+//   template <class U1, class U2>
+//       tuple& operator=(pair<U1, U2>&&); //iffsizeof...(T) == 2
+//
+//   void swap(tuple&) noexcept(AND(swap(declval<T&>(), declval<T&>())...));
+};
+
+}
 
 namespace rapidtuple {
 
@@ -128,55 +346,55 @@ namespace detail_{
   { constexpr static bool value = false; };
 
   template<std::size_t I, class T, bool = empty_not_final<T>::value>
-  struct head : private T
+  struct tuple_leaf : private T
   {
-    constexpr head() : T{} {}
-    constexpr head(head &&) = default;
-    constexpr head(head const &) = default;
+    constexpr tuple_leaf() : T{} {}
+    constexpr tuple_leaf(tuple_leaf &&) = default;
+    constexpr tuple_leaf(tuple_leaf const &) = default;
 
-    constexpr head(ignore_t) {}
+    constexpr tuple_leaf(ignore_t) {}
 
-    constexpr head(default_element_t) : T{} {}
+    constexpr tuple_leaf(default_element_t) : T{} {}
 
-    constexpr head(T const & arg)
+    constexpr tuple_leaf(T const & arg)
     : T(arg)
     {}
 
     template<class U>
-    constexpr head(U && arg)
+    constexpr tuple_leaf(U && arg)
     : T{std::forward<U>(arg)}
     {}
 
     template<class Alloc, class... Ts, class = typename std::enable_if<!std::uses_allocator<T, Alloc>::value>::type>
-    constexpr head(std::allocator_arg_t, Alloc const &, Ts && ... args)
-    : head(std::forward<Ts>(args)...)
+    constexpr tuple_leaf(std::allocator_arg_t, Alloc const &, Ts && ... args)
+    : tuple_leaf(std::forward<Ts>(args)...)
     {}
 
     template<class Alloc>
     using disable_is_not_uses_allocator = typename std::enable_if<std::uses_allocator<T, Alloc>::value>::type;
 
     template<class Alloc, class = disable_is_not_uses_allocator<Alloc>>
-    constexpr head(std::allocator_arg_t, Alloc const & a)
+    constexpr tuple_leaf(std::allocator_arg_t, Alloc const & a)
     : T{a}
     {}
 
     template<class Alloc, class = disable_is_not_uses_allocator<Alloc>>
-    constexpr head(std::allocator_arg_t, Alloc const & a, ignore_t)
+    constexpr tuple_leaf(std::allocator_arg_t, Alloc const & a, ignore_t)
     : T{a}
     {}
 
     template<class Alloc, class U, class = disable_is_not_uses_allocator<Alloc>>
-    constexpr head(std::allocator_arg_t, Alloc const & a, U && arg)
+    constexpr tuple_leaf(std::allocator_arg_t, Alloc const & a, U && arg)
     : T{a, std::forward<U>(arg)}
     {}
 
-    head & operator=(head && other)
+    tuple_leaf & operator=(tuple_leaf && other)
     noexcept(std::is_nothrow_move_assignable<T>::value) {
       get() = std::forward<T>(other.get());
       return *this;
     }
 
-    head & operator=(head const & other) {
+    tuple_leaf & operator=(tuple_leaf const & other) {
       get() = other.get();
       return *this;
     }
@@ -189,48 +407,48 @@ namespace detail_{
   };
 
   template<std::size_t I, class T>
-  struct head<I, T, false>
+  struct tuple_leaf<I, T, false>
   {
-    constexpr head() : x{} {}
-    constexpr head(ignore_t) {}
-    constexpr head(head &&) = default;
-    constexpr head(head const &) = default;
+    constexpr tuple_leaf() : x{} {}
+    constexpr tuple_leaf(ignore_t) {}
+    constexpr tuple_leaf(tuple_leaf &&) = default;
+    constexpr tuple_leaf(tuple_leaf const &) = default;
 
     template<class U>
-    constexpr head(U && arg)
+    constexpr tuple_leaf(U && arg)
     : x{std::forward<U>(arg)}
     {}
 
     template<class Alloc, class... Ts, class = typename std::enable_if<!std::uses_allocator<T, Alloc>::value>::type>
-    constexpr head(std::allocator_arg_t, Alloc const &, Ts && ... args)
-    : head(std::forward<Ts>(args)...)
+    constexpr tuple_leaf(std::allocator_arg_t, Alloc const &, Ts && ... args)
+    : tuple_leaf(std::forward<Ts>(args)...)
     {}
 
     template<class Alloc>
     using disable_is_not_uses_allocator = typename std::enable_if<std::uses_allocator<T, Alloc>::value>::type;
 
     template<class Alloc, class = disable_is_not_uses_allocator<Alloc>>
-    constexpr head(std::allocator_arg_t, Alloc const & a)
+    constexpr tuple_leaf(std::allocator_arg_t, Alloc const & a)
     : x{a}
     {}
 
     template<class Alloc, class = disable_is_not_uses_allocator<Alloc>>
-    constexpr head(std::allocator_arg_t, Alloc const & a, ignore_t)
+    constexpr tuple_leaf(std::allocator_arg_t, Alloc const & a, ignore_t)
     : x{a}
     {}
 
     template<class Alloc, class U, class = disable_is_not_uses_allocator<Alloc>>
-    constexpr head(std::allocator_arg_t, Alloc const & a, U && arg)
+    constexpr tuple_leaf(std::allocator_arg_t, Alloc const & a, U && arg)
     : x{a, std::forward<U>(arg)}
     {}
 
-    head & operator=(head && other)
+    tuple_leaf & operator=(tuple_leaf && other)
     noexcept(std::is_nothrow_move_assignable<T>::value) {
       x = std::forward<T>(other.get());
       return *this;
     }
 
-    head & operator=(head const & other) {
+    tuple_leaf & operator=(tuple_leaf const & other) {
       x = other.get();
       return *this;
     }
@@ -247,19 +465,19 @@ namespace detail_{
 
   // (Clang) disable ambiguisity
   template<std::size_t I>
-  struct head<I, ignore_t, true>
+  struct tuple_leaf<I, ignore_t, true>
   : ignore_t
   {
     template<class U>
-    constexpr head(U const &)
+    constexpr tuple_leaf(U const &)
     {}
 
     template<class Alloc, class... Ts>
-    constexpr head(std::allocator_arg_t, Alloc const &, Ts const & ...)
+    constexpr tuple_leaf(std::allocator_arg_t, Alloc const &, Ts const & ...)
     {}
 
-    head & operator=(head &&) noexcept {}
-    head & operator=(head const &) {}
+    tuple_leaf & operator=(tuple_leaf &&) noexcept {}
+    tuple_leaf & operator=(tuple_leaf const &) {}
 
     ignore_t & get() noexcept { return static_cast<ignore_t&>(*this); }
     ignore_t const & get() const { return static_cast<ignore_t const&>(*this); }
@@ -269,20 +487,20 @@ namespace detail_{
   };
 
   template<std::size_t I>
-  struct head<I, ignore_t const, false>
+  struct tuple_leaf<I, ignore_t const, false>
   : ignore_t
   {
     template<class U>
-    constexpr head(U const &)
+    constexpr tuple_leaf(U const &)
     {}
 
     template<class Alloc, class... Ts>
-    constexpr head(std::allocator_arg_t, Alloc const &, Ts const & ...)
+    constexpr tuple_leaf(std::allocator_arg_t, Alloc const &, Ts const & ...)
     {}
 
-    head & operator=(head &&) noexcept {}
-    head & operator=(head const &) {}
-    head & operator=(ignore_t) = delete;
+    tuple_leaf & operator=(tuple_leaf &&) noexcept {}
+    tuple_leaf & operator=(tuple_leaf const &) {}
+    tuple_leaf & operator=(ignore_t) = delete;
 
     ignore_t const & get() noexcept { return static_cast<ignore_t const&>(*this); }
     ignore_t const & get() const { return static_cast<ignore_t const&>(*this); }
@@ -308,7 +526,7 @@ namespace detail_{
 
   template<std::size_t... Ints, class... Ts>
   class tuple_impl<std::index_sequence<Ints...>, Ts...>
-  : public head<Ints, Ts>...
+  : public tuple_leaf<Ints, Ts>...
   {
     using index_sequence_ = std::index_sequence<Ints...>;
 
@@ -318,98 +536,98 @@ namespace detail_{
     tuple_impl(tuple_impl const & other) = default;
 
     explicit constexpr tuple_impl(Ts const &... args)
-    : head<Ints, Ts>(args)...
+    : tuple_leaf<Ints, Ts>(args)...
     {}
 
     template<class... Us, class = types_list<typename enable_if_convertible<Us, Ts>::type...>>
     explicit constexpr tuple_impl(Us &&... args)
-    : head<Ints, Ts>(std::forward<Us>(args))...
+    : tuple_leaf<Ints, Ts>(std::forward<Us>(args))...
     {}
 
 
     template<class... Us>
     constexpr tuple_impl(tuple_impl<index_sequence_, Us...> const & other)
-    : head<Ints, Ts>(
-        static_cast<head<Ints, Us> const &>(other).get()
+    : tuple_leaf<Ints, Ts>(
+        static_cast<tuple_leaf<Ints, Us> const &>(other).get()
     )...
     {}
 
     template<class... Us>
     constexpr tuple_impl(tuple_impl<index_sequence_, Us...> & other)
-    : head<Ints, Ts>(
-        static_cast<head<Ints, Us> const &>(other).get()
+    : tuple_leaf<Ints, Ts>(
+        static_cast<tuple_leaf<Ints, Us> const &>(other).get()
     )...
     {}
 
     template<class... Us>
     constexpr tuple_impl(tuple_impl<index_sequence_, Us...> && other)
-    : head<Ints, Ts>(
-        static_cast<Us&&>(static_cast<head<Ints, Us> &>(other).get())
+    : tuple_leaf<Ints, Ts>(
+        static_cast<Us&&>(static_cast<tuple_leaf<Ints, Us> &>(other).get())
     )...
     {}
 
 
     template<class U1, class U2>
     constexpr tuple_impl(std::pair<U1, U2> const & p)
-    : head<Ints, Ts>(std::get<Ints>(p))...
+    : tuple_leaf<Ints, Ts>(std::get<Ints>(p))...
     {}
 
     template<class U1, class U2>
     constexpr tuple_impl(std::pair<U1, U2> && p)
-    : head<Ints, Ts>(std::get<Ints>(std::move(p)))...
+    : tuple_leaf<Ints, Ts>(std::get<Ints>(std::move(p)))...
     {}
 
     template<class U1, class U2>
     constexpr tuple_impl(std::pair<U1, U2> & p)
-    : head<Ints, Ts>(std::get<Ints>(static_cast<std::pair<U1, U2> const &>(p)))...
+    : tuple_leaf<Ints, Ts>(std::get<Ints>(static_cast<std::pair<U1, U2> const &>(p)))...
     {}
 
 
     template<class Alloc>
     tuple_impl(std::allocator_arg_t, Alloc const & a)
-    : head<Ints, Ts>(std::allocator_arg_t{}, a)...
+    : tuple_leaf<Ints, Ts>(std::allocator_arg_t{}, a)...
     {}
 
     template<class Alloc, class... Us>
     tuple_impl(std::allocator_arg_t, Alloc const & a, Us &&... args)
-    : head<Ints, Ts>(std::allocator_arg_t{}, a, std::forward<Us>(args))...
+    : tuple_leaf<Ints, Ts>(std::allocator_arg_t{}, a, std::forward<Us>(args))...
     {}
 
     template <class Alloc, class... Us>
     tuple_impl(std::allocator_arg_t, Alloc const & a, tuple_impl<index_sequence_, Us...> const & other)
-    : head<Ints, Ts>(std::allocator_arg_t{}, a,
-      static_cast<head<Ints, Us> const &>(other).get()
+    : tuple_leaf<Ints, Ts>(std::allocator_arg_t{}, a,
+      static_cast<tuple_leaf<Ints, Us> const &>(other).get()
     )...
     {}
 
     template<class Alloc, class... Us>
     tuple_impl(std::allocator_arg_t, Alloc const & a, tuple_impl<index_sequence_, Us...> && other)
-    : head<Ints, Ts>(std::allocator_arg_t{}, a, std::move(
-      static_cast<head<Ints, Us>&&>(other).get()
+    : tuple_leaf<Ints, Ts>(std::allocator_arg_t{}, a, std::move(
+      static_cast<tuple_leaf<Ints, Us>&&>(other).get()
     ))...
     {}
 
     template<class Alloc, class... Us>
     tuple_impl(std::allocator_arg_t, Alloc const & a, tuple_impl<index_sequence_, Us...> & other)
-    : head<Ints, Ts>(std::allocator_arg_t{}, a, std::move(
-      static_cast<head<Ints, Us>&>(other).get()
+    : tuple_leaf<Ints, Ts>(std::allocator_arg_t{}, a, std::move(
+      static_cast<tuple_leaf<Ints, Us>&>(other).get()
     ))...
     {}
 
 
     template <class Alloc, class U1, class U2>
     tuple_impl(std::allocator_arg_t, Alloc const & a, std::pair<U1, U2> const & p)
-    : head<Ints, Ts>(std::allocator_arg_t{}, a, std::get<Ints>(p))...
+    : tuple_leaf<Ints, Ts>(std::allocator_arg_t{}, a, std::get<Ints>(p))...
     {}
 
     template <class Alloc, class U1, class U2>
     tuple_impl(std::allocator_arg_t, Alloc const & a, std::pair<U1, U2> && p)
-    : head<Ints, Ts>(std::allocator_arg_t{}, a, std::get<Ints>(std::move(p)))...
+    : tuple_leaf<Ints, Ts>(std::allocator_arg_t{}, a, std::get<Ints>(std::move(p)))...
     {}
 
     template <class Alloc, class U1, class U2>
     tuple_impl(std::allocator_arg_t, Alloc const & a, std::pair<U1, U2> & p)
-    : head<Ints, Ts>(std::allocator_arg_t{}, a, std::get<Ints>(static_cast<std::pair<U1, U2> const &>(p)))...
+    : tuple_leaf<Ints, Ts>(std::allocator_arg_t{}, a, std::get<Ints>(static_cast<std::pair<U1, U2> const &>(p)))...
     {}
 
 
@@ -419,8 +637,8 @@ namespace detail_{
     template<class... Us>
     tuple_impl& operator=(tuple_impl<index_sequence_, Us...> const & other) {
       FALCON_UNPACK(
-        static_cast<head<Ints, Ts>&>(*this).get()
-        = static_cast<head<Ints, Us> const &>(other).get()
+        static_cast<tuple_leaf<Ints, Ts>&>(*this).get()
+        = static_cast<tuple_leaf<Ints, Us> const &>(other).get()
       );
       return *this;
     }
@@ -428,8 +646,8 @@ namespace detail_{
     template<class... Us>
     tuple_impl& operator=(tuple_impl<index_sequence_, Us...> && other) {
       FALCON_UNPACK(
-        static_cast<head<Ints, Ts>&>(*this).get()
-        = std::move(static_cast<head<Ints, Us>&>(other).get())
+        static_cast<tuple_leaf<Ints, Ts>&>(*this).get()
+        = std::move(static_cast<tuple_leaf<Ints, Us>&>(other).get())
       );
       return *this;
     }
@@ -438,7 +656,7 @@ namespace detail_{
     template<class U1, class U2>
     tuple_impl& operator=(std::pair<U1, U2> const & p) {
       FALCON_UNPACK(
-        static_cast<head<Ints, Ts>&>(*this).get()
+        static_cast<tuple_leaf<Ints, Ts>&>(*this).get()
         = std::get<Ints>(p)
       );
       return *this;
@@ -447,7 +665,7 @@ namespace detail_{
     template<class U1, class U2>
     tuple_impl& operator=(std::pair<U1, U2> && p) noexcept {
       FALCON_UNPACK(
-        static_cast<head<Ints, Ts>&>(*this).get()
+        static_cast<tuple_leaf<Ints, Ts>&>(*this).get()
         = std::get<Ints>(std::move(p))
       );
       return *this;
@@ -460,8 +678,8 @@ namespace detail_{
       std::declval<Ts&>(), std::declval<Ts&>()
     )))) {
       FALCON_UNPACK(std::swap(
-        static_cast<head<Ints, Ts>&>(*this).get(),
-        static_cast<head<Ints, Ts>&>(other).get()
+        static_cast<tuple_leaf<Ints, Ts>&>(*this).get(),
+        static_cast<tuple_leaf<Ints, Ts>&>(other).get()
       ));
     }
   };
@@ -495,12 +713,12 @@ namespace detail_{
 
 
   template<std::size_t I, class T>
-  T get_i(head<I, T> const &);
+  T get_i(tuple_leaf<I, T> const &);
 
   template<std::size_t I, class Ints, class... Ts>
   //tuple_element_t<I, tuple<Ts...>> &
   constexpr decltype(auto) get(tuple_impl<Ints, Ts...> & t) {
-    return static_cast<head<I, decltype(get_i<I>(t))>&>(t).get();
+    return static_cast<tuple_leaf<I, decltype(get_i<I>(t))>&>(t).get();
   }
 
   template<std::size_t I, class Ints, class... Ts>
@@ -508,14 +726,14 @@ namespace detail_{
   constexpr decltype(auto) get(tuple_impl<Ints, Ts...> && t) {
     using T = decltype(get_i<I>(t));
     return static_cast<T&&>(
-      static_cast<head<I, T>&&>(t).get()
+      static_cast<tuple_leaf<I, T>&&>(t).get()
     );
   }
 
   template<std::size_t I, class Ints, class... Ts>
   //tuple_element_t<I, tuple<Ts...>> const &
   constexpr decltype(auto) get(tuple_impl<Ints, Ts...> const & t) {
-    return static_cast<head<I, decltype(get_i<I>(t))> const &>(t).get();
+    return static_cast<tuple_leaf<I, decltype(get_i<I>(t))> const &>(t).get();
   }
 
 
@@ -564,7 +782,7 @@ namespace detail_{
 
 
   template<class T, std::size_t I>
-  constexpr std::integral_constant<std::size_t, I> index_of_impl(head<I, T> const &);
+  constexpr std::integral_constant<std::size_t, I> index_of_impl(tuple_leaf<I, T> const &);
 
   template<class T, class Tuple>
   struct tuple_index_of
@@ -637,8 +855,8 @@ namespace detail_{
     tuple_impl<std::index_sequence<Ints...>, Us...> const & rhs
   ) {
     return eq_impl(
-      pack<head<Ints, Ts>...>(),
-      pack<head<Ints, Us>...>(),
+      pack<tuple_leaf<Ints, Ts>...>(),
+      pack<tuple_leaf<Ints, Us>...>(),
       lhs, rhs
     );
   }
@@ -661,8 +879,8 @@ namespace detail_{
     tuple_impl<std::index_sequence<Ints...>, Us...> const & rhs
   ) {
     return less_impl(
-      pack<head<Ints, Ts>...>(),
-      pack<head<Ints, Us>...>(),
+      pack<tuple_leaf<Ints, Ts>...>(),
+      pack<tuple_leaf<Ints, Us>...>(),
       lhs, rhs
     );
   }
