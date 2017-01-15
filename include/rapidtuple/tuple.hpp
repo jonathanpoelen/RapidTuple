@@ -70,6 +70,12 @@ namespace detail_
 {
   using std::size_t;
 
+  template<class... Ts>
+  using mpl_all = typename std::is_same<
+    brigand::list<Ts...>,
+    brigand::filled_list<std::true_type, sizeof...(Ts)>
+  >::type;
+
   // TODO
   template<size_t... Ints>
   struct tuple_indices {};
@@ -103,12 +109,10 @@ namespace detail_
   {
     tuple_leaf & operator=(const tuple_leaf&) = delete;
 
-    constexpr tuple_leaf()
-    noexcept(std::is_nothrow_default_constructible<T>::value)
-    {}
+    constexpr tuple_leaf() = default;
 
     template<class Alloc>
-    tuple_leaf(Alloc const & a)
+    tuple_leaf(allocator_arg_t, Alloc const & a)
     : T(allocator_arg_t(), a)
     {}
 
@@ -129,7 +133,7 @@ namespace detail_
     {}
 
     template<class Alloc, class U>
-    explicit tuple_leaf(Alloc const & a, U && v)
+    explicit tuple_leaf(allocator_arg_t, Alloc const & a, U && v)
     : T(allocator_arg_t(), a, std::forward<U>(v))
     {}
 
@@ -160,15 +164,84 @@ namespace detail_
   struct tuple_leaf<I, T, false>
   {
     T value;
+
+    tuple_leaf& operator=(const tuple_leaf&);
+public:
+    constexpr tuple_leaf()
+    noexcept(std::is_nothrow_default_constructible<T>::value)
+    : value()
+    {}
+
+    tuple_leaf(tuple_leaf const &) = default;
+    tuple_leaf(tuple_leaf &&) = default;
+
+    template <class Alloc>
+    tuple_leaf(allocator_arg_t, Alloc const & a)
+    : value(allocator_arg_t(), a)
+    {}
+
+    template <
+      class U,
+      std::enable_if_t<
+        !std::is_same<uncvref_t<U>, tuple_leaf>::value &&
+        std::is_constructible<T, U>::value,
+        bool
+      > = true
+    >
+    constexpr explicit tuple_leaf(U && v)
+    noexcept(std::is_nothrow_constructible<T, U>::value)
+    : value(std::forward<U>(v))
+    {}
+
+    template <class U, class Alloc>
+    explicit tuple_leaf(allocator_arg_t, Alloc const & a, U && v)
+    : value(allocator_arg_t(), a, std::forward<U>(v))
+    {}
+
+    template <class U>
+    tuple_leaf &
+    operator=(U && t)
+    noexcept(std::is_nothrow_assignable<T&, U>::value)
+    {
+      value = std::forward<U>(t);
+      return *this;
+    }
+
+
+    int swap(tuple_leaf& t)
+    //noexcept(std::is_nothrow_swappable<tuple_leaf>::value)
+    {
+      using std::swap;
+      swap(*this, t);
+      return 0;
+    }
+
+    constexpr T       & get()       noexcept { return value; }
+    constexpr T const & get() const noexcept { return value; }
   };
 
   template<size_t... Ints, class... Ts>
   struct tuple_impl<tuple_indices<Ints...>, Ts...>
   : tuple_leaf<Ints, Ts>...
   {
+    tuple_impl() = default;
+    tuple_impl(tuple_impl const &) = default;
+    tuple_impl(tuple_impl &&) = default;
+
     template<class... Us>
-    tuple_impl(Us && ...)
+    tuple_impl(Us && ... v)
+    : tuple_leaf<Ints, Ts>(std::forward<Us>(v))...
     {}
+
+    template<class Alloc, class... Us>
+    tuple_impl(allocator_arg_t, Alloc const & a, Us && ... v)
+    : tuple_leaf<Ints, Ts>(allocator_arg_t(), a, std::forward<Us>(v))...
+    {}
+
+//     template<size_t... Ints, class Tuple>
+//     tuple_impl(tuple_indices<Ints...>, Tuple && ... t)
+//     : tuple_leaf<Ints, Ts>(std::get<Ints>(t))...
+//     {}
   };
 
   template<class Tuple, class Indices>
@@ -190,13 +263,6 @@ class tuple
   template<class T, class U>
   using is_convertible
     = typename std::is_convertible<T, U>::type;
-
-  template<class... Us>
-  using is_implicitly_convertible
-    = typename std::is_same<
-    brigand::list<is_convertible<Us, Ts>...>,
-    brigand::filled_list<std::true_type, sizeof...(Us)>
-  >::type;
 
   template<class T, class... Us>
   struct pack_expands_to_this_tuple
@@ -230,40 +296,12 @@ public:
   // 8
   constexpr tuple(tuple const & other) = default;
 
-  // 2 (explicit)
-  template<
-    bool Dummy = true,
-    std::enable_if_t<
-      Dummy &&
-      is_implicitly_convertible<Ts...>::value,
-      bool
-    > = true
-  >
-  constexpr tuple(Ts const &... args)
-  noexcept(noexcept(base(args...)))
-  : base_(args...)
-  {}
-
-  // 2 (implicit)
-  template<
-    bool Dummy = true,
-    std::enable_if_t<
-      Dummy &&
-      !is_implicitly_convertible<Ts...>::value,
-      bool
-    > = true
-  >
-  explicit constexpr tuple(Ts const &... args)
-  noexcept(noexcept(base(args...)))
-  : base_(args...)
-  {}
-
-  // 3 (implicit)
+  // 2, 3 (implicit)
   template<
     class... Us,
     std::enable_if_t<
       !pack_expands_to_this_tuple<Us...>::value &&
-      is_implicitly_convertible<Us&&...>::value,
+      detail_::mpl_all<is_convertible<Us&&, Ts>...>::value,
       bool
     > = true
   >
@@ -271,12 +309,12 @@ public:
   : base_(std::forward<Us>(args)...)
   {}
 
-  // 3 (explicit)
+  // 2, 3 (explicit)
   template<
     class... Us,
     std::enable_if_t<
       !pack_expands_to_this_tuple<Us...>::value &&
-      !is_implicitly_convertible<Us&&...>::value,
+      !detail_::mpl_all<is_convertible<Us&&, Ts>...>::value,
       bool
     > = true
   >
@@ -333,7 +371,7 @@ public:
 //
 //   tuple& operator=(const tuple&);
 //   tuple&
-//       operator=(tuple&&) noexcept(AND(is_nothrow_move_assignable<T>::value ...));
+//       operator=(tuple&&) noexcept(AND(std::is_nothrow_move_assignable<T>::value ...));
 //   template<class... U>
 //       tuple& operator=(const tuple<U...>&);
 //   template<class... U>
