@@ -11,6 +11,9 @@
 
 #include "rapidtuple/tuple.hpp"
 
+template<std::size_t i>
+using i_ = std::integral_constant<std::size_t, i>;
+
 template<class, bool = 1>
 struct S
 {};
@@ -21,6 +24,23 @@ struct S<T, 0>
   template<class U> void operator = (U const &) {}
 };
 
+template<bool b>
+void Check()
+{
+  (void)typename std::enable_if<b, int>::type{};
+}
+
+struct throwable
+{
+  throwable() {}
+  throwable(throwable &&) {}
+  throwable(throwable const &) {}
+  template<class T> throwable(T const &) {}
+  throwable & operator = (throwable &&) { return *this; }
+  throwable & operator = (throwable const &) { return *this; }
+  template<class T> throwable & operator = (T const &) { return *this; }
+};
+
 #define CHECK_EQUAL(a,b) do {\
   auto const & xxxx_a = a;\
   auto const & xxxx_b = b;\
@@ -29,9 +49,6 @@ struct S<T, 0>
     std::abort(); \
   }\
 } while(0)
-
-template<std::size_t i>
-using i_ = std::integral_constant<std::size_t, i>;
 
 template<class Tuple>
 using tuple_size_t = typename std::tuple_size<Tuple>::type;
@@ -48,6 +65,18 @@ struct O
   O&operator=(O &) { std::cout << "O=(O &)\n"; return *this; }
   O&operator=(O &&) { std::cout << "O=(O &&)\n"; return *this; }
   O&operator=(O const &) { std::cout << "O=(O const &)\n"; return *this; }
+};
+
+struct explicit_noexcept
+{
+  explicit explicit_noexcept(int) noexcept
+  {}
+};
+
+struct explicit_
+{
+  explicit explicit_(int)
+  {}
 };
 
 template<template<class...> class Tuple, bool B>
@@ -98,21 +127,25 @@ void test_type()
   S<decltype(get<2>(std::declval<T const &>()))>{} = S<rref &>{};
 
   S<decltype(get<plain>(std::declval<T>()))>{} = S<plain&&>{};
-  S<decltype(get<ref>(std::declval<T>()))>{} = S<ref>{};
-  S<decltype(get<rref>(std::declval<T>()))>{} = S<rref>{};
+  S<decltype(get<ref  >(std::declval<T>()))>{} = S<ref>{};
+  S<decltype(get<rref >(std::declval<T>()))>{} = S<rref>{};
 
   S<decltype(get<plain>(std::declval<T const>())), B>{} = S<plain const &&, B>{};
-  S<decltype(get<ref>(std::declval<T const>())), B>{} = S<ref, B>{};
-  S<decltype(get<rref>(std::declval<T const>())), B>{} = S<rref, B>{};
+  S<decltype(get<ref  >(std::declval<T const>())), B>{} = S<ref, B>{};
+  S<decltype(get<rref >(std::declval<T const>())), B>{} = S<rref, B>{};
 
   S<decltype(get<plain>(std::declval<T&>()))>{} = S<plain &>{};
-  S<decltype(get<ref>(std::declval<T&>()))>{} = S<ref>{};
-  S<decltype(get<rref>(std::declval<T&>()))>{} = S<rref &>{};
+  S<decltype(get<ref  >(std::declval<T&>()))>{} = S<ref>{};
+  S<decltype(get<rref >(std::declval<T&>()))>{} = S<rref &>{};
 
   S<decltype(get<plain>(std::declval<T const &>()))>{} = S<plain const &>{};
-  S<decltype(get<ref>(std::declval<T const &>()))>{} = S<ref>{};
-  S<decltype(get<rref>(std::declval<T const &>()))>{} = S<rref &>{};
+  S<decltype(get<ref  >(std::declval<T const &>()))>{} = S<ref>{};
+  S<decltype(get<rref >(std::declval<T const &>()))>{} = S<rref &>{};
 }
+
+template<class T>
+T const & as_const(T const & x)
+{ return x; }
 
 template<template<class...> class Tuple>
 void test_cons(std::streambuf & sbuf)
@@ -122,26 +155,48 @@ void test_cons(std::streambuf & sbuf)
   {
     using T = Tuple<O>;
     T t;
-//     t = t;
-//     t = T{O(1)};
+    t = t;
+    t = T{O(1)};
     std::get<0>(t) = 3;
+    T{t};
+    T{as_const(t)};
+    T{std::move(t)};
   }
   {
     using T = Tuple<O&>;
     O r;
     T t{r};
-//     t = t;
-//     t = T{r};
+    t = t;
+    t = T{r};
     std::get<0>(t) = r;
+    T{t};
+    T{as_const(t)};
+    T{std::move(t)};
+  }
+  {
+    using T = Tuple<O const&>;
+    O r;
+    O const cr;
+    T t{r};
+    T ct{cr};
+    T{t};
+    T{as_const(t)};
+    T{std::move(t)};
+    T{ct};
+    T{as_const(ct)};
+    T{std::move(ct)};
   }
   {
     using T = Tuple<O&&>;
     O r;
     T t{O{}};
-//     t = t;
-//     t = T{O{}};
+    t = t;
+    t = T{O{}};
     std::get<0>(t) = r;
     std::get<0>(t) = O{};
+    // T{t}; // TODO check if deleted
+    // T{as_const(t)}; // TODO check if deleted
+    T{std::move(t)};
   }
 //   {
 //     using T = Tuple<O,O>;
@@ -182,6 +237,45 @@ int main()
   test_cons<falcon::tuple>(sbuf2);
 
   CHECK_EQUAL(sbuf1.str(), sbuf2.str());
+
+  using tuple1 = falcon::tuple<int>;
+  using tuple2 = falcon::tuple<unsigned>;
+  Check<noexcept(tuple1())>();
+  Check<noexcept(tuple1(1))>();
+  Check<noexcept(tuple1(1u))>();
+  Check<noexcept(tuple1(std::declval<tuple1>()))>();
+  Check<noexcept(tuple1(std::declval<tuple1 &>()))>();
+  Check<noexcept(tuple1(std::declval<tuple1 const &>()))>();
+//   Check<noexcept(tuple1(tuple2()))>();
+
+  using tuple3 = falcon::tuple<int, int>;
+  using tuple4 = falcon::tuple<unsigned, unsigned>;
+  Check<noexcept(tuple3())>();
+  Check<noexcept(tuple3(1, 1))>();
+  Check<noexcept(tuple3(1u, 1))>();
+  Check<noexcept(tuple3(std::declval<tuple3>()))>();
+  Check<noexcept(tuple3(std::declval<tuple3 &>()))>();
+  Check<noexcept(tuple3(std::declval<tuple3 const &>()))>();
+//   Check<noexcept(tuple3(tuple4()))>();
+
+  using tuple5 = falcon::tuple<throwable>;
+  Check<!noexcept(tuple5())>();
+  Check<!noexcept(tuple5(1))>();
+  Check<!noexcept(tuple5(throwable{}))>();
+  Check<!noexcept(tuple5(std::declval<tuple5>()))>();
+  Check<!noexcept(tuple5(std::declval<tuple5 &>()))>();
+  Check<!noexcept(tuple5(std::declval<tuple5 const &>()))>();
+  using tuple6 = falcon::tuple<throwable>;
+  Check<!noexcept(tuple6())>();
+//   Check<!noexcept(tuple6(1, 1))>();
+//   Check<!noexcept(tuple6(1, throwable{}))>();
+//   Check<!noexcept(tuple6(throwable{}, 1))>();
+//   Check<!noexcept(tuple6(throwable{}, throwable{}))>();
+  Check<!noexcept(tuple6(std::declval<tuple6>()))>();
+  Check<!noexcept(tuple6(std::declval<tuple6 &>()))>();
+  Check<!noexcept(tuple6(std::declval<tuple6 const &>()))>();
+
+
 
 //   {
 //     using T1 = rapidtuple::tuple<long, long>;
@@ -304,23 +398,6 @@ int main()
 //       return 1;
 //     }
 //   }
-
-
-  using T = falcon::tuple<>;
-  using T_int = falcon::tuple<int>;
-  using T_int_int = falcon::tuple<int, int>;
-
-  T t{};
-  T_int ti{};
-  T_int_int tii{};
-
-  T{t};
-
-  T_int{1};
-  T_int{ti};
-
-  T_int_int{1, 1};
-  T_int_int{tii};
 
   return 0;
 }

@@ -87,6 +87,10 @@ namespace detail_
   using is_nothrow_constructible
     = typename std::is_nothrow_constructible<T, U>::type;
 
+  template<class T, class U>
+  using is_nothrow_assignable
+    = typename std::is_nothrow_constructible<T, U>::type;
+
   template<class T>
   using is_default_constructible
     = typename std::is_default_constructible<T>::type;
@@ -94,6 +98,22 @@ namespace detail_
   template<class T>
   using is_nothrow_default_constructible
     = typename std::is_nothrow_default_constructible<T>::type;
+
+  template<class T>
+  using is_copy_assignable
+    = typename std::is_copy_assignable<T>::type;
+
+  template<class T>
+  using is_nothrow_copy_assignable
+    = typename std::is_nothrow_copy_assignable<T>::type;
+
+  template<class T>
+  using is_move_assignable
+    = typename std::is_move_assignable<T>::type;
+
+  template<class T>
+  using is_nothrow_move_assignable
+    = typename std::is_nothrow_move_assignable<T>::type;
 
   template<size_t n>
   struct is_same_as_pack_impl
@@ -130,6 +150,12 @@ namespace detail_
     brigand::list<Bool...>,
     brigand::filled_list<std::true_type, sizeof...(Bool)>
   >;
+
+  template<bool b, class T, class U>
+  using mpl_if_else_c = typename std::conditional<b, T, U>::type;
+
+  template<class B, class T, class U>
+  using mpl_if_else = mpl_if_else_c<B::value, T, U>;
 
   template<size_t... Ints>
   struct tuple_indices {};
@@ -252,16 +278,30 @@ public:
     : value(allocator_arg_t(), a, std::forward<U>(v))
     {}
 
+    // is implicitly deleted if 'value' is of reference type
+    tuple_leaf &
+    operator=(tuple_leaf const & t)
+    noexcept(std::is_nothrow_assignable<T&, T const &>::value)
+    {
+      value = t.value;
+      return *this;
+    }
 
-    tuple_leaf & operator=(tuple_leaf const &) = default;
-    tuple_leaf & operator=(tuple_leaf &&) = default;
+    // is implicitly deleted if 'value' is of reference type
+    tuple_leaf &
+    operator=(tuple_leaf && t)
+    noexcept(std::is_nothrow_assignable<T&, T&&>::value)
+    {
+      value = static_cast<T&&>(t.value);
+      return *this;
+    }
 
     template <class U>
     tuple_leaf &
-    operator=(U && t)
+    operator=(U && v)
     noexcept(std::is_nothrow_assignable<T&, U>::value)
     {
-      value = std::forward<U>(t);
+      value = std::forward<U>(v);
       return *this;
     }
 
@@ -308,12 +348,25 @@ public:
     {}
 
     template<class Tuple>
+    // PERF specialize for tuple
     explicit constexpr tuple_impl(tuple_indices<Ints...>, Tuple && t)
     noexcept(mpl_all<
       is_nothrow_constructible<Ts, decltype(get<Ints>(t))>...
     >::value)
     : tuple_leaf<Ints, Ts>(get<Ints>(t))...
     {}
+
+    tuple_impl & operator = (tuple_impl const &) = default;
+    tuple_impl & operator = (tuple_impl &&) = default;
+
+    template<class Tuple>
+    // PERF specialize for tuple
+    FALCON_CONSTEXPR_AFTER_CXX11
+    void assign(tuple_indices<Ints...>, Tuple && t)
+    noexcept(mpl_all<
+      is_nothrow_assignable<Ts, decltype(get<Ints>(t))>...
+    >::value)
+    { FALCON_UNPACK(static_cast<tuple_leaf<Ints, Ts>&>(*this) = get<Ints>(t)); }
   };
 
   template<class Tuple, class Indices>
@@ -504,7 +557,56 @@ public:
 //       tuple& operator=(const pair<U1, U2>&); // iff sizeof...(T) == 2
 //   template<class U1, class U2>
 //       tuple& operator=(pair<U1, U2>&&); //iffsizeof...(T) == 2
+
+
+    tuple & operator=(tuple const & t) = default;
+    tuple & operator=(tuple && t) = default;
+
+//     template<
+//       bool Dummy = true,
+//       std::enable_if_t<
+//         Dummy &&
+//         detail_::mpl_all<detail_::is_copy_assignable<Ts>...>::value,
+//         bool
+//       > = true
+//     >
+//     tuple & operator=(tuple const & t)
+//     noexcept(noexcept(detail_::mpl_all<detail_::is_nothrow_copy_assignable<Ts>...>::value))
+//     {
+//         base_ = t.base_;
+//         return *this;
+//     }
 //
+//     template<
+//       bool Dummy = true,
+//       std::enable_if_t<
+//         Dummy &&
+//         detail_::mpl_all<detail_::is_move_assignable<Ts>...>::value,
+//         bool
+//       > = true
+//     >
+//     tuple & operator=(tuple && t)
+//     noexcept(noexcept(detail_::mpl_all<detail_::is_nothrow_move_assignable<Ts>...>::value))
+//     {
+//         base_ = static_cast<base&&>(t.base_);
+//         return *this;
+//     }
+
+    template<
+      class Tuple,
+      std::enable_if_t<
+        std::is_assignable<base &, Tuple>::value,
+        bool
+      > = true
+    >
+    tuple & operator=(Tuple && t)
+    noexcept(noexcept(std::is_nothrow_assignable<base &, Tuple>::value))
+    {
+        base_ = std::forward<Tuple>(t);
+        return *this;
+    }
+
+
 //   void swap(tuple&) noexcept(AND(swap(declval<T&>(), declval<T&>())...));
 
 // get
