@@ -11,72 +11,105 @@
 
 #include "rapidtuple/tuple.hpp"
 
-// template<class>
-// struct Check {};
-//
-// #define CHECK_EQUAL(a,b) do {\
-//   auto const & xxxx_a = a;\
-//   auto const & xxxx_b = b;\
-//   if (xxxx_a != xxxx_b) {\
-//     std::cerr << "--- line " << __LINE__ << " ---\n  " << #a << " != " #b << "\n  " << xxxx_a << " != " << xxxx_b << "\n"; \
-//     return 1; \
-//   }\
-// } while(0)
+template<class, bool = 1>
+struct S
+{};
 
-int main() {
-//   {
-// #define TYPE int,double&,char&&
-//     using T1 = std::tuple<TYPE>;
-//     using T2 = rapidtuple::tuple<TYPE>;
-// #undef TYPE
-//
-//     static_assert(std::tuple_size<T1>::value == std::tuple_size<T2>::value, "different size");
-//     static_assert(std::tuple_size<T1>::value == rapidtuple::tuple_size<T2>::value, "different size");
-//
-//     Check<std::tuple_element_t<1, T1>>{} = Check<std::tuple_element_t<1, T2>>{};
-//     Check<std::tuple_element_t<1, T1>>{} = Check<rapidtuple::tuple_element_t<1, T2>>{};
-//
-// #define SAME(i)\
-//   Check<std::tuple_element<i,T1>::type>() =\
-//   Check<std::tuple_element<i,T2>::type>()
-//
-//     SAME(0);
-//     SAME(1);
-//     SAME(2);
-//
-// #undef SAME
-//
-// #define NIL
-//
-// #define SAME(i, Q)\
-//   Check<decltype(std::get<i>(std::declval<T1 Q>()))>() =\
-//   Check<decltype(rapidtuple::get<i>(std::declval<T2 Q>()))>()
-//
-// #define TEST(Q)\
-//   SAME(0,Q);\
-//   SAME(1,Q);\
-//   SAME(2,Q);
-//
-//   TEST(NIL);
-//   TEST(&);
-//   TEST(&&);
-//   TEST(const &);
-//
-// #undef TEST
-//
-// #define TEST(Q)\
-//   SAME(int,Q);\
-//   SAME(double&,Q);\
-//   SAME(char&&,Q);
-//
-//   TEST(NIL);
-//   TEST(&);
-//   TEST(&&);
-//   TEST(const &);
-//
-// #undef SAME
-// #undef TEST
-//   }
+template<class T>
+struct S<T, 0>
+{
+  template<class U> void operator = (U const &) {}
+};
+
+#define CHECK_EQUAL(a,b) do {\
+  auto const & xxxx_a = a;\
+  auto const & xxxx_b = b;\
+  if (xxxx_a != xxxx_b) {\
+    std::cerr << "--- line " << __LINE__ << " ---\n  " << #a << " != " #b << "\n  " << xxxx_a << " != " << xxxx_b << "\n"; \
+    return 1; \
+  }\
+} while(0)
+
+template<std::size_t i>
+using i_ = std::integral_constant<std::size_t, i>;
+
+template<class Tuple>
+using tuple_size_t = typename std::tuple_size<Tuple>::type;
+
+template<template<class...> class Tuple, bool B>
+void test()
+{
+  using plain = int;
+  using ref = double &;
+  using rref = char &&;
+  using T = Tuple<plain, ref, rref>;
+
+  S<i_<3>>{} = S<tuple_size_t<T>>{};
+  S<i_<3>>{} = S<tuple_size_t<T const>>{};
+  S<i_<3>>{} = S<tuple_size_t<T volatile>>{};
+  S<i_<3>>{} = S<tuple_size_t<T const volatile>>{};
+
+  S<falcon::tuple_element_t<0, T>>{} = S<plain>{};
+  S<falcon::tuple_element_t<1, T>>{} = S<ref>{};
+  S<falcon::tuple_element_t<2, T>>{} = S<rref>{};
+
+  S<falcon::tuple_element_t<0, T const>>{} = S<plain const>{};
+  S<falcon::tuple_element_t<1, T const>>{} = S<ref>{};
+  S<falcon::tuple_element_t<2, T const>>{} = S<rref>{};
+
+  S<falcon::tuple_element_t<0, T volatile>>{} = S<plain volatile>{};
+  S<falcon::tuple_element_t<1, T volatile>>{} = S<ref>{};
+  S<falcon::tuple_element_t<2, T volatile>>{} = S<rref>{};
+
+  S<falcon::tuple_element_t<0, T const volatile>>{} = S<plain const volatile>{};
+  S<falcon::tuple_element_t<1, T const volatile>>{} = S<ref>{};
+  S<falcon::tuple_element_t<2, T const volatile>>{} = S<rref>{};
+
+  using std::get;
+
+  S<decltype(get<0>(std::declval<T>()))>{} = S<plain&&>{};
+  S<decltype(get<1>(std::declval<T>()))>{} = S<ref>{};
+  S<decltype(get<2>(std::declval<T>()))>{} = S<rref>{};
+
+  S<decltype(get<0>(std::declval<T const>())), B>{} = S<plain const &&, B>{};
+  S<decltype(get<1>(std::declval<T const>())), B>{} = S<ref, B>{};
+  S<decltype(get<2>(std::declval<T const>())), B>{} = S<rref, B>{};
+
+  S<decltype(get<0>(std::declval<T&>()))>{} = S<plain &>{};
+  S<decltype(get<1>(std::declval<T&>()))>{} = S<ref>{};
+  S<decltype(get<2>(std::declval<T&>()))>{} = S<rref &>{};
+
+  S<decltype(get<0>(std::declval<T const &>()))>{} = S<plain const &>{};
+  S<decltype(get<1>(std::declval<T const &>()))>{} = S<ref>{};
+  S<decltype(get<2>(std::declval<T const &>()))>{} = S<rref &>{};
+
+  S<decltype(get<plain>(std::declval<T>()))>{} = S<plain&&>{};
+  S<decltype(get<ref>(std::declval<T>()))>{} = S<ref>{};
+  S<decltype(get<rref>(std::declval<T>()))>{} = S<rref>{};
+
+  S<decltype(get<plain>(std::declval<T const>())), B>{} = S<plain const &&, B>{};
+  S<decltype(get<ref>(std::declval<T const>())), B>{} = S<ref, B>{};
+  S<decltype(get<rref>(std::declval<T const>())), B>{} = S<rref, B>{};
+
+  S<decltype(get<plain>(std::declval<T&>()))>{} = S<plain &>{};
+  S<decltype(get<ref>(std::declval<T&>()))>{} = S<ref>{};
+  S<decltype(get<rref>(std::declval<T&>()))>{} = S<rref &>{};
+
+  S<decltype(get<plain>(std::declval<T const &>()))>{} = S<plain const &>{};
+  S<decltype(get<ref>(std::declval<T const &>()))>{} = S<ref>{};
+  S<decltype(get<rref>(std::declval<T const &>()))>{} = S<rref &>{};
+}
+
+int main()
+{
+#if __cplusplus > FALCON_CXX_STD_14
+# define cpp17_or_later 1
+#else
+# define cpp17_or_later 0
+#endif
+  test<std::tuple, cpp17_or_later>();
+  test<falcon::tuple, true>();
+
 //   {
 //     using T1 = rapidtuple::tuple<long, long>;
 //     using T2 = rapidtuple::tuple<int, int>;
@@ -91,6 +124,7 @@ int main() {
 //     T1(std::move(t2));
 //     T1{t2};
 //   }
+
 //   {
 //     struct T{
 //       T() { std::cout << "T()\n"; }
@@ -255,19 +289,19 @@ int main() {
 //   }
 //
 //   {
-//     Check<decltype(rapidtuple::tuple_cat(
+//     S<decltype(rapidtuple::tuple_cat(
 //       rapidtuple::tuple<int>{},rapidtuple::tuple<float,double>{}
-//     ))>() = Check<rapidtuple::tuple<int,float,double>>();
+//     ))>() = S<rapidtuple::tuple<int,float,double>>();
 //
-//     Check<decltype(rapidtuple::tuple_cat(
+//     S<decltype(rapidtuple::tuple_cat(
 //       std::declval<rapidtuple::tuple<int>&>(), std::declval<rapidtuple::tuple<float,double>&>()
-//     ))>() = Check<rapidtuple::tuple<int,float,double>>();
+//     ))>() = S<rapidtuple::tuple<int,float,double>>();
 //   }
 //
 //   {
 //     int i;
-//     Check<decltype(rapidtuple::tie(i,i))>() = Check<rapidtuple::tuple<int&, int&>>();
-//     Check<decltype(rapidtuple::forward_as_tuple(i,1))>() = Check<rapidtuple::tuple<int&, int&&>>();
+//     S<decltype(rapidtuple::tie(i,i))>() = S<rapidtuple::tuple<int&, int&>>();
+//     S<decltype(rapidtuple::forward_as_tuple(i,1))>() = S<rapidtuple::tuple<int&, int&&>>();
 //   }
 //
 //   {
@@ -298,14 +332,14 @@ int main() {
 //   {
 //     rapidtuple::tuple<int,int> t{2,5};
 //     struct to_long { long operator()(int i) const { return i; } };
-//     Check<rapidtuple::tuple<long,long>>{} = Check<decltype(transform_from_tuple(to_long{}, t))>{};
+//     S<rapidtuple::tuple<long,long>>{} = S<decltype(transform_from_tuple(to_long{}, t))>{};
 //     struct to_void { void operator()(int) const { } };
-//     Check<rapidtuple::tuple<rapidtuple::ignore_t>>{} = Check<decltype(transform_from_tuple(to_void{}, t, std::index_sequence<0>{}))>{};
+//     S<rapidtuple::tuple<rapidtuple::ignore_t>>{} = S<decltype(transform_from_tuple(to_void{}, t, std::index_sequence<0>{}))>{};
 //   }
 //
 //   {
 //     int x = 1;
-//     Check<rapidtuple::tuple<int const &>>{} = Check<decltype(rapidtuple::make_tuple(std::cref(x)))>{};
+//     S<rapidtuple::tuple<int const &>>{} = S<decltype(rapidtuple::make_tuple(std::cref(x)))>{};
 //   }
 //
 //   {

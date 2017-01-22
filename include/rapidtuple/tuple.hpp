@@ -34,7 +34,7 @@ SOFTWARE.*/
 
 namespace falcon {
 
-// TODO FALCON_UNPACK : noexcept ?
+using std::size_t;
 
 using allocator_arg_t = std::allocator_arg_t;
 constexpr allocator_arg_t allocator_arg {};
@@ -42,46 +42,100 @@ constexpr allocator_arg_t allocator_arg {};
 template<class T>
 using uncvref_t = std::remove_cv_t<std::remove_reference_t<T>>;
 
-template<class...>
-using void_t = void;
+// template<class...>
+// using void_t = void;
 
-template<class T, class... Ts>
-using is_same_as_pack = typename
-  std::is_same<brigand::list<T>, brigand::list<Ts...>>::type;
+#if __cplusplus < FALCON_CXX_STD_14
+template<size_t i, class Tuple>
+using tuple_element_t = typename std::tuple_element<i, Tuple>::type;
+#else
+using std::tuple_element_t;
+#endif
 
-// namespace detail_
-// {
-//   template<class Tuple, class = void>
-//   struct is_tuple_like_impl : std::false_type
-//   {};
-//
-//   template<class Tuple>
-//   struct is_tuple_like_impl<Tuple, void_t<std::tuple_size<T>::type>>
-//   : std::true_type
-//   {};
-// }
-//
-// template<class Tuple>
-// struct is_tuple_like
-// : detail_::is_tuple_like_impl<Tuple>
-// {};
+#if __cplusplus > FALCON_CXX_STD_14
+using std::is_nothrow_swappable;
+#else
+namespace detail_
+{
+  namespace swappable_details
+  {
+    using std::swap;
+
+    template<class T>
+    static brigand::bool_<
+      noexcept(swap(std::declval<T&>(), std::declval<T&>()))
+    > test(int);
+
+    template<class>
+    static std::false_type test(...);
+  }
+}
+
+template<class T>
+using is_nothrow_swappable = decltype(detail_::swappable_details::test<T>(0));
+#endif
 
 namespace detail_
 {
-  using std::size_t;
+  template<class T, class U>
+  using is_same = typename std::is_same<T, U>::type;
 
-  template<class... Ts>
-  using mpl_all = typename std::is_same<
-    brigand::list<Ts...>,
-    brigand::filled_list<std::true_type, sizeof...(Ts)>
-  >::type;
+  template<class T, class U>
+  using is_convertible = typename std::is_convertible<T, U>::type;
 
-  // TODO
+  template<class T, class U>
+  using is_nothrow_constructible
+    = typename std::is_nothrow_constructible<T, U>::type;
+
+  template<class T>
+  using is_default_constructible
+    = typename std::is_default_constructible<T>::type;
+
+  template<class T>
+  using is_nothrow_default_constructible
+    = typename std::is_nothrow_default_constructible<T>::type;
+
+  template<size_t n>
+  struct is_same_as_pack_impl
+  {
+    template<class...> using is_same = std::false_type;
+    template<class...> using is_same_uncvref = std::false_type;
+  };
+
+  template<>
+  struct is_same_as_pack_impl<1>
+  {
+    template<class T, class U>
+    using is_same = is_same<T, U>;
+
+    template<class T, class U>
+    using is_same_uncvref = is_same<T, uncvref_t<U>>;
+  };
+
+  template<class T, class... Us>
+  using is_same_as_pack = typename is_same_as_pack_impl<sizeof...(Us)>
+    ::template is_same<T, Us...>;
+
+  template<class T, class... Us>
+  using is_same_as_uncvref_pack = typename is_same_as_pack_impl<sizeof...(Us)>
+    ::template is_same_uncvref<T, Us...>;
+}
+
+namespace detail_
+{
+  using std::get;
+
+  template<class... Bool>
+  using mpl_all = is_same<
+    brigand::list<Bool...>,
+    brigand::filled_list<std::true_type, sizeof...(Bool)>
+  >;
+
   template<size_t... Ints>
   struct tuple_indices {};
 
   template<class... Ts>
-  using range_for = brigand::range<std::size_t, 0, sizeof...(Ts)>;
+  using range_for = brigand::range<size_t, 0, sizeof...(Ts)>;
 
   template<class>
   struct mpl_list_to_tuple_indices;
@@ -107,7 +161,7 @@ namespace detail_
   struct tuple_leaf<I, T, true>
   : private T
   {
-    tuple_leaf & operator=(const tuple_leaf&) = delete;
+    tuple_leaf & operator=(tuple_leaf const &) = delete;
 
     constexpr tuple_leaf() = default;
 
@@ -148,8 +202,7 @@ namespace detail_
 
     int
     swap(tuple_leaf & t)
-    // TODO c++17
-    //noexcept(std::is_nothrow_swappable<tuple_leaf>::value)
+    noexcept(is_nothrow_swappable<tuple_leaf>::value)
     {
       using std::swap;
       swap(get(), t);
@@ -161,11 +214,12 @@ namespace detail_
   };
 
   template<size_t I, class T>
-  struct tuple_leaf<I, T, false>
+  class tuple_leaf<I, T, false>
   {
     T value;
 
-    tuple_leaf& operator=(const tuple_leaf&);
+    tuple_leaf & operator=(tuple_leaf const &);
+
 public:
     constexpr tuple_leaf()
     noexcept(std::is_nothrow_default_constructible<T>::value)
@@ -207,9 +261,8 @@ public:
       return *this;
     }
 
-
-    int swap(tuple_leaf& t)
-    //noexcept(std::is_nothrow_swappable<tuple_leaf>::value)
+    int swap(tuple_leaf & t)
+    noexcept(is_nothrow_swappable<tuple_leaf>::value)
     {
       using std::swap;
       swap(*this, t);
@@ -221,27 +274,42 @@ public:
   };
 
   template<size_t... Ints, class... Ts>
-  struct tuple_impl<tuple_indices<Ints...>, Ts...>
+  class tuple_impl<tuple_indices<Ints...>, Ts...>
   : tuple_leaf<Ints, Ts>...
   {
+    template<class... Us>
+    using pack_expands_to_this_tuple
+      = is_same_as_uncvref_pack<tuple_impl, Us...>;
+
+  public:
     tuple_impl() = default;
     tuple_impl(tuple_impl const &) = default;
     tuple_impl(tuple_impl &&) = default;
 
-    template<class... Us>
-    tuple_impl(Us && ... v)
+    template<
+      class... Us,
+      std::enable_if_t<
+        !pack_expands_to_this_tuple<Us...>::value,
+        bool
+      > = true
+    >
+    explicit constexpr tuple_impl(Us && ... v)
+    noexcept(mpl_all<is_nothrow_constructible<Ts, Us>...>::value)
     : tuple_leaf<Ints, Ts>(std::forward<Us>(v))...
     {}
 
     template<class Alloc, class... Us>
-    tuple_impl(allocator_arg_t, Alloc const & a, Us && ... v)
+    explicit constexpr tuple_impl(allocator_arg_t, Alloc const & a, Us && ... v)
     : tuple_leaf<Ints, Ts>(allocator_arg_t(), a, std::forward<Us>(v))...
     {}
 
-//     template<size_t... Ints, class Tuple>
-//     tuple_impl(tuple_indices<Ints...>, Tuple && ... t)
-//     : tuple_leaf<Ints, Ts>(std::get<Ints>(t))...
-//     {}
+    template<class Tuple>
+    explicit constexpr tuple_impl(tuple_indices<Ints...>, Tuple && t)
+    noexcept(mpl_all<
+      is_nothrow_constructible<Ts, decltype(get<Ints>(t))>...
+    >::value)
+    : tuple_leaf<Ints, Ts>(get<Ints>(t))...
+    {}
   };
 
   template<class Tuple, class Indices>
@@ -252,6 +320,34 @@ public:
   { using type = brigand::list<std::tuple_element_t<Ints::value, Tuple>...>; };
 }
 
+
+template<class T, class Tuple>
+// TODO generic version
+struct tuple_index;
+
+template<class T, class Tuple>
+struct tuple_index<T, Tuple const>
+: tuple_index<T, Tuple>::type
+{};
+
+template<class T, class Tuple>
+struct tuple_index<T, Tuple volatile>
+: tuple_index<T, Tuple>::type
+{};
+
+template<class T, class Tuple>
+struct tuple_index<T, Tuple const volatile>
+: tuple_index<T, Tuple>::type
+{};
+
+template<class T, class Tuple>
+using tuple_index_t = typename tuple_index<T, Tuple>::type;
+
+#if __cplusplus > FALCON_CXX_STD_14
+template<class T>
+constexpr size_t tuple_index_v = tuple_index<T>::value;
+#endif
+
 template<class... Ts>
 class tuple
 {
@@ -260,19 +356,12 @@ class tuple
   using base = detail_::tuple_impl<indices_, Ts...>;
   base base_;
 
-  template<class T, class U>
-  using is_convertible
-    = typename std::is_convertible<T, U>::type;
-
-  template<class T, class... Us>
-  struct pack_expands_to_this_tuple
-  : brigand::bool_<
-    sizeof...(Us) == 0 &&
-    std::is_same<tuple, uncvref_t<T>>::value
-  > {};
+  template<class... Us>
+  using pack_expands_to_this_tuple
+    = detail_::is_same_as_uncvref_pack<tuple, Us...>;
 
   template<class Tuple>
-  using is_other_tuple_like = brigand::bool_<
+  using is_tuple_like = brigand::bool_<
     std::tuple_size<Tuple>::value == sizeof...(Ts) &&
     !std::is_same<uncvref_t<Tuple>, tuple>::value
   >;
@@ -281,31 +370,59 @@ class tuple
   using tuple_is_implicitly_convertible = brigand::transform<
     typename detail_::tuple_to_list<
       Tuple,
-      brigand::range<std::size_t, 0, std::tuple_size<Tuple>::value>
+      brigand::range<size_t, 0, std::tuple_size<Tuple>::value>
     >::type,
     brigand::list<Ts...>,
-    brigand::bind<is_convertible, brigand::_1, brigand::_2>
+    brigand::bind<detail_::is_convertible, brigand::_1, brigand::_2>
   >;
 
 public:
-  // TODO optional explicit ctor in C++17
-  // 1
-  explicit tuple() = default;
+  // 1 (implicit)
+  template<
+    bool Dummy = true,
+    std::enable_if_t<
+      Dummy &&
+      detail_::mpl_all<detail_::is_default_constructible<Ts>...>::value,
+      bool
+    > = true
+  >
+  tuple()
+  //noexcept(detail_::mpl_all<detail_::is_nothrow_default_constructible<Ts>...>::value)
+  noexcept(noexcept(base()))
+  : base_()
+  {}
+
+  // 1 (explicit)
+  template<
+    bool Dummy = true,
+    std::enable_if_t<
+      Dummy &&
+      !detail_::mpl_all<detail_::is_default_constructible<Ts>...>::value,
+      bool
+    > = true
+  >
+  explicit tuple()
+  //noexcept(detail_::mpl_all<detail_::is_nothrow_default_constructible<Ts>...>::value)
+  noexcept(noexcept(base()))
+  : base_()
+  {}
+
   // 9
-  constexpr tuple(tuple && other) = default;
+  tuple(tuple && other) = default;
   // 8
-  constexpr tuple(tuple const & other) = default;
+  tuple(tuple const & other) = default;
 
   // 2, 3 (implicit)
   template<
     class... Us,
     std::enable_if_t<
       !pack_expands_to_this_tuple<Us...>::value &&
-      detail_::mpl_all<is_convertible<Us&&, Ts>...>::value,
+      detail_::mpl_all<detail_::is_convertible<Us, Ts>...>::value,
       bool
     > = true
   >
   constexpr tuple(Us &&... args)
+  noexcept(noexcept(base(std::forward<Us>(args)...)))
   : base_(std::forward<Us>(args)...)
   {}
 
@@ -314,11 +431,12 @@ public:
     class... Us,
     std::enable_if_t<
       !pack_expands_to_this_tuple<Us...>::value &&
-      !detail_::mpl_all<is_convertible<Us&&, Ts>...>::value,
+      !detail_::mpl_all<detail_::is_convertible<Us, Ts>...>::value,
       bool
     > = true
   >
   explicit constexpr tuple(Us &&... args)
+  noexcept(noexcept(base(std::forward<Us>(args)...)))
   : base_(std::forward<Us>(args)...)
   {}
 
@@ -326,12 +444,13 @@ public:
   template<
     class Tuple,
     std::enable_if_t<
-      is_other_tuple_like<Tuple>::value &&
+      is_tuple_like<Tuple>::value &&
       tuple_is_implicitly_convertible<Tuple>::value,
       bool
     > = false
   >
   constexpr tuple(Tuple && t)
+  noexcept(noexcept(base(indices_{}, std::forward<Tuple>(t))))
   : base_(indices_{}, std::forward<Tuple>(t))
   {}
 
@@ -339,12 +458,13 @@ public:
   template<
     class Tuple,
     std::enable_if_t<
-      is_other_tuple_like<Tuple>::value &&
+      is_tuple_like<Tuple>::value &&
       !tuple_is_implicitly_convertible<Tuple>::value,
       bool
     > = false
   >
   explicit constexpr tuple(Tuple && t)
+  noexcept(noexcept(base(indices_{}, std::forward<Tuple>(t))))
   : base_(indices_{}, std::forward<Tuple>(t))
   {}
 
@@ -382,7 +502,155 @@ public:
 //       tuple& operator=(pair<U1, U2>&&); //iffsizeof...(T) == 2
 //
 //   void swap(tuple&) noexcept(AND(swap(declval<T&>(), declval<T&>())...));
+
+// get
+//@{
+
+  template <size_t i, class... Us>
+  friend constexpr
+  typename std::tuple_element<i, tuple<Us...>>::type &
+  get(tuple<Us...>       & t) noexcept;
+
+  template <size_t i, class... Us>
+  friend constexpr
+  typename std::tuple_element<i, tuple<Us...>>::type const &
+  get(tuple<Us...> const & t) noexcept;
+
+  template <size_t i, class... Us>
+  friend constexpr
+  typename std::tuple_element<i, tuple<Us...>>::type &&
+  get(tuple<Us...>       && t) noexcept;
+
+  template <size_t i, class... Us>
+  friend constexpr
+  typename std::tuple_element<i, tuple<Us...>>::type const &&
+  get(tuple<Us...> const && t) noexcept;
+
+
+  template <class T, class... Us>
+  friend constexpr
+  T &
+  get(tuple<Us...>       & t) noexcept;
+
+  template <class T, class... Us>
+  friend constexpr
+  T const &
+  get(tuple<Us...> const & t) noexcept;
+
+  template <class T, class... Us>
+  friend constexpr
+  T &&
+  get(tuple<Us...>       && t) noexcept;
+
+  template <class T, class... Us>
+  friend constexpr
+  T const &&
+  get(tuple<Us...> const && t) noexcept;
+
+//@}
 };
+
+
+// get
+//@{
+
+template <size_t i, class... Ts>
+constexpr typename std::tuple_element<i, tuple<Ts...>>::type &
+get(tuple<Ts...>       & t) noexcept
+{
+  using type = typename std::tuple_element<i, tuple<Ts...>>::type;
+  return static_cast<detail_::tuple_leaf<i, type> &>(t.base_).get();
+}
+
+template <size_t i, class... Ts>
+constexpr typename std::tuple_element<i, tuple<Ts...>>::type const &
+get(tuple<Ts...> const & t) noexcept
+{
+  using type = typename std::tuple_element<i, tuple<Ts...>>::type;
+  return static_cast<detail_::tuple_leaf<i, type> const &>(t.base_).get();
+}
+
+template <size_t i, class... Ts>
+constexpr typename std::tuple_element<i, tuple<Ts...>>::type &&
+get(tuple<Ts...>       && t) noexcept
+{
+  using type = typename std::tuple_element<i, tuple<Ts...>>::type;
+  return static_cast<type &&>(
+    static_cast<detail_::tuple_leaf<i, type> &&>(t.base_).get()
+  );
+}
+
+template <size_t i, class... Ts>
+constexpr typename std::tuple_element<i, tuple<Ts...>>::type const &&
+get(tuple<Ts...> const && t) noexcept
+{
+  using type = typename std::tuple_element<i, tuple<Ts...>>::type;
+  return static_cast<type const &&>(
+    static_cast<detail_::tuple_leaf<i, type> const &&>(t.base_).get()
+  );
+}
+
+template <class T, class... Ts>
+constexpr T &
+get(tuple<Ts...>       & t) noexcept
+{
+  constexpr size_t i = tuple_index<T, tuple<Ts...>>::value;
+  return static_cast<detail_::tuple_leaf<i, T> &>(t.base_).get();
+}
+
+template <class T, class... Ts>
+constexpr T const &
+get(tuple<Ts...> const & t) noexcept
+{
+  constexpr size_t i = tuple_index<T, tuple<Ts...>>::value;
+  return static_cast<detail_::tuple_leaf<i, T> const &>(t.base_).get();
+}
+
+template <class T, class... Ts>
+constexpr T &&
+get(tuple<Ts...>       && t) noexcept
+{
+  constexpr size_t i = tuple_index<T, tuple<Ts...>>::value;
+  return static_cast<T &&>(
+    static_cast<detail_::tuple_leaf<i, T> &&>(t.base_).get()
+  );
+}
+
+template <class T, class... Ts>
+constexpr T const &&
+get(tuple<Ts...> const && t) noexcept
+{
+  constexpr size_t i = tuple_index<T, tuple<Ts...>>::value;
+  return static_cast<T const &&>(
+    static_cast<detail_::tuple_leaf<i, T> const &&>(t.base_).get()
+  );
+}
+
+//@}
+
+namespace detail_ {
+  template<class T, size_t I>
+  brigand::size_t<I>
+  index_of_impl(detail_::tuple_leaf<I, T> const &);
+}
+
+template<class T, class... Ts>
+struct tuple_index<T, tuple<Ts...>>
+: decltype(detail_::index_of_impl<T>(
+  std::declval<detail_::tuple_impl<
+    detail_::tuple_indices_for<Ts...>,
+    Ts...
+  > const &
+>()))
+{};
+
+// TODO tuple_as<List>/tuple_elements
+// TODO tuple_count_element<T>
+
+template<class... Ts>
+void swap(tuple<Ts...> & t1, tuple<Ts...> & t2)
+noexcept(noexcept(t1.swap(t2)))
+{ t1.swap(t2); }
 
 }
 
@@ -1122,6 +1390,25 @@ template<class... Ts, class Alloc>
 struct uses_allocator< ::rapidtuple::tuple<Ts...>, Alloc>
 : std::true_type
 {};
+
+
+template<class... Ts>
+struct tuple_size< ::falcon::tuple<Ts...>>
+: std::integral_constant<std::size_t, sizeof...(Ts)>
+{};
+
+
+template<std::size_t I, class... Ts>
+struct tuple_element<I, ::falcon::tuple<Ts...>>
+{ using type = brigand::at_c<brigand::list<Ts...>, I>; };
+
+
+template<class... Ts, class Alloc>
+struct uses_allocator< ::falcon::tuple<Ts...>, Alloc>
+: std::true_type
+{};
+
+using ::falcon::get;
 
 }
 
