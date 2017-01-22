@@ -1,13 +1,13 @@
 #include <type_traits>
 
-#include <tuple>
-#include <array>
-#include <vector>
-#include <cassert>
+// #include <tuple>
+// #include <array>
+// #include <vector>
+// #include <cassert>
 #include <sstream>
 #include <iostream>
 
-#include <functional> // std::cref
+// #include <functional> // std::cref
 
 #include "rapidtuple/tuple.hpp"
 
@@ -26,7 +26,7 @@ struct S<T, 0>
   auto const & xxxx_b = b;\
   if (xxxx_a != xxxx_b) {\
     std::cerr << "--- line " << __LINE__ << " ---\n  " << #a << " != " #b << "\n  " << xxxx_a << " != " << xxxx_b << "\n"; \
-    return 1; \
+    std::abort(); \
   }\
 } while(0)
 
@@ -36,8 +36,22 @@ using i_ = std::integral_constant<std::size_t, i>;
 template<class Tuple>
 using tuple_size_t = typename std::tuple_size<Tuple>::type;
 
+struct O
+{
+  O() { std::cout << "O()\n"; }
+  O(int& i) = delete; // { std::cout << "O(" << i << "&)\n"; }
+  O(int&& i) { std::cout << "O(" << i << "&&)\n"; }
+  O(int const & i) = delete; // { std::cout << "O(" << i << " const &)\n"; }
+  O(O &) { std::cout << "O(O &)\n"; }
+  O(O &&) { std::cout << "O(O &&)\n"; }
+  O(O const &) { std::cout << "O(O const &)\n"; }
+  O&operator=(O &) { std::cout << "O=(O &)\n"; return *this; }
+  O&operator=(O &&) { std::cout << "O=(O &&)\n"; return *this; }
+  O&operator=(O const &) { std::cout << "O=(O const &)\n"; return *this; }
+};
+
 template<template<class...> class Tuple, bool B>
-void test()
+void test_type()
 {
   using plain = int;
   using ref = double &;
@@ -100,6 +114,56 @@ void test()
   S<decltype(get<rref>(std::declval<T const &>()))>{} = S<rref &>{};
 }
 
+template<template<class...> class Tuple>
+void test_cons(std::streambuf & sbuf)
+{
+  auto old_sbuf = std::cout.rdbuf(&sbuf);
+
+  {
+    using T = Tuple<O>;
+    T t;
+//     t = t;
+//     t = T{O(1)};
+    std::get<0>(t) = 3;
+  }
+  {
+    using T = Tuple<O&>;
+    O r;
+    T t{r};
+//     t = t;
+//     t = T{r};
+    std::get<0>(t) = r;
+  }
+  {
+    using T = Tuple<O&&>;
+    O r;
+    T t{O{}};
+//     t = t;
+//     t = T{O{}};
+    std::get<0>(t) = r;
+    std::get<0>(t) = O{};
+  }
+//   {
+//     using T = Tuple<O,O>;
+//     using P = std::pair<O,O>;
+//     P const cr;
+//     P r;
+//
+//     T t{P{}};
+//     T{cr};
+//     T{r};
+//     t = P{};
+//     t = cr;
+//     t = r;
+//   }
+//   {
+//     using T = Tuple<std::array<O,2>>;
+//     T({2,1});
+//   }
+
+  std::cout.rdbuf(old_sbuf);
+}
+
 int main()
 {
 #if __cplusplus > FALCON_CXX_STD_14
@@ -107,8 +171,17 @@ int main()
 #else
 # define cpp17_or_later 0
 #endif
-  test<std::tuple, cpp17_or_later>();
-  test<falcon::tuple, true>();
+
+  test_type<std::tuple, cpp17_or_later>();
+  test_type<falcon::tuple, true>();
+
+  std::stringbuf sbuf1;
+  std::stringbuf sbuf2;
+
+  test_cons<std::tuple>(sbuf1);
+  test_cons<falcon::tuple>(sbuf2);
+
+  CHECK_EQUAL(sbuf1.str(), sbuf2.str());
 
 //   {
 //     using T1 = rapidtuple::tuple<long, long>;
@@ -124,152 +197,21 @@ int main()
 //     T1(std::move(t2));
 //     T1{t2};
 //   }
-
 //   {
-//     struct T{
-//       T() { std::cout << "T()\n"; }
-//       T(int& i) = delete; // { std::cout << "T(" << i << "&)\n"; }
-//       T(int&& i) { std::cout << "T(" << i << "&&)\n"; }
-//       T(int const & i) = delete; // { std::cout << "T(" << i << " const &)\n"; }
-//       T(T &) { std::cout << "T(T &)\n"; }
-//       T(T &&) { std::cout << "T(T &&)\n"; }
-//       T(T const &) { std::cout << "T(T const &)\n"; }
-//       T&operator=(T &) { std::cout << "T=(T &)\n"; return *this; }
-//       T&operator=(T &&) { std::cout << "T=(T &&)\n"; return *this; }
-//       T&operator=(T const &) { std::cout << "T=(T const &)\n"; return *this; }
-//     };
-//     std::stringbuf buf;
-//     auto old_buf = std::cout.rdbuf(&buf);
-//
 //     {
-//       using T1 = std::tuple<T>;
-//       using T2 = rapidtuple::tuple<T>;
-//       {
-//         T1 t;
-//         t = t;
-//         t = T1{T(1)};
-//         std::get<0>(t) = 3;
-//       }
-//       std::string s = buf.str();
-//       buf.str("");
-//       {
-//         T2 t;
-//         t = t;
-//         t = T2{T(1)};
-//         rapidtuple::get<0>(t) = 3;
-//       }
-//       CHECK_EQUAL(s, buf.str());
-//       buf.str("");
+//       O{};
+//       O t{};
+//       O{std::move(t)};
 //     }
+//     std::string s = buf.str();
+//     buf.str("");
 //     {
-//       using T1 = std::tuple<T&>;
-//       using T2 = rapidtuple::tuple<T&>;
-//       {
-//         T r;
-//         T1 t{r};
-//         t = t;
-//         t = T1{r};
-//         std::get<0>(t) = r;
-//       }
-//       std::string s = buf.str();
-//       buf.str("");
-//       {
-//         T r;
-//         T2 t{r};
-//         t = t;
-//         t = T2{r};
-//         rapidtuple::get<0>(t) = r;
-//       }
-//       CHECK_EQUAL(s, buf.str());
-//       buf.str("");
+//       rapidtuple::tuple<O,O>{std::ignore,O{}};
 //     }
-//     {
-//       using T1 = std::tuple<T&&>;
-//       using T2 = rapidtuple::tuple<T&&>;
-//       {
-//         T r;
-//         T1 t{T{}};
-//         t = t;
-//         t = T1{T{}};
-//         std::get<0>(t) = r;
-//         std::get<0>(t) = T{};
-//       }
-//       std::string s = buf.str();
-//       buf.str("");
-//       {
-//         T r;
-//         T2 t{T{}};
-//         t = t;
-//         t = T2{T{}};
-//         rapidtuple::get<0>(t) = r;
-//         rapidtuple::get<0>(t) = T{};
-//       }
-//       CHECK_EQUAL(s, buf.str());
-//       buf.str("");
-//     }
-//     {
-//       using T1 = std::tuple<T,T>;
-//       using T2 = rapidtuple::tuple<T,T>;
-//       using P = std::pair<T,T>;
-//       {
-//         P const cr;
-//         P r;
-//
-//         T1 t{P{}};
-//         T1{cr};
-//         T1{r};
-//         t = P{};
-//         t = cr;
-//         t = r;
-//       }
-//       std::string s = buf.str();
-//       buf.str("");
-//       {
-//         P const cr;
-//         P r;
-//
-//         T2 t{P{}};
-//         T2{cr};
-//         T2{r};
-//         t = P{};
-//         t = cr;
-//         t = r;
-//       }
-//       CHECK_EQUAL(s, buf.str());
-//       buf.str("");
-//     }
-//     {
-//       {
-//         T{};
-//         T t{};
-//         T{std::move(t)};
-//       }
-//       std::string s = buf.str();
-//       buf.str("");
-//       {
-//         rapidtuple::tuple<T,T>{std::ignore,T{}};
-//       }
-//       CHECK_EQUAL(s, buf.str());
-//       buf.str("");
-//     }
-//     {
-//       using T1 = std::tuple<std::array<T,2>>;
-//       using T2 = rapidtuple::tuple<std::array<T,2>>;
-//       {
-//         T1({2,1});
-//       }
-//       std::string s = buf.str();
-//       buf.str("");
-//       {
-//         T2({2,1});
-//       }
-//       CHECK_EQUAL(s, buf.str());
-//       buf.str("");
-//     }
-//
-//     std::cout.rdbuf(old_buf);
+//     CHECK_EQUAL(s, buf.str());
+//     buf.str("");
 //   }
-//
+
 //   {
 //     rapidtuple::tuple<std::vector<int>>{
 //       std::allocator_arg_t{}, std::allocator<int>{}

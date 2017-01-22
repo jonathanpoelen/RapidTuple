@@ -161,8 +161,6 @@ namespace detail_
   struct tuple_leaf<I, T, true>
   : private T
   {
-    tuple_leaf & operator=(tuple_leaf const &) = delete;
-
     constexpr tuple_leaf() = default;
 
     template<class Alloc>
@@ -191,6 +189,10 @@ namespace detail_
     : T(allocator_arg_t(), a, std::forward<U>(v))
     {}
 
+
+    tuple_leaf & operator=(tuple_leaf const &) = default;
+    tuple_leaf & operator=(tuple_leaf &&) = default;
+
     template<class U>
     tuple_leaf &
     operator=(U && v)
@@ -217,8 +219,6 @@ namespace detail_
   class tuple_leaf<I, T, false>
   {
     T value;
-
-    tuple_leaf & operator=(tuple_leaf const &);
 
 public:
     constexpr tuple_leaf()
@@ -252,6 +252,10 @@ public:
     : value(allocator_arg_t(), a, std::forward<U>(v))
     {}
 
+
+    tuple_leaf & operator=(tuple_leaf const &) = default;
+    tuple_leaf & operator=(tuple_leaf &&) = default;
+
     template <class U>
     tuple_leaf &
     operator=(U && t)
@@ -275,7 +279,7 @@ public:
 
   template<size_t... Ints, class... Ts>
   class tuple_impl<tuple_indices<Ints...>, Ts...>
-  : tuple_leaf<Ints, Ts>...
+  : public tuple_leaf<Ints, Ts>...
   {
     template<class... Us>
     using pack_expands_to_this_tuple
