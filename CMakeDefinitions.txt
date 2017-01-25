@@ -76,12 +76,13 @@ if (NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
   option(SANITIZES "enable sanitizers." OFF)
 
   if (SANITIZES)
-    add_definitions(
+    set(SANITIZE_OPTIONS
       -fsanitize=address
       -fsanitize=leak
       -fsanitize=undefined
     )
-    #link_libraries(-lasan)
+    add_definitions(${SANITIZE_OPTIONS})
+    link_libraries(${SANITIZE_OPTIONS})
   endif()
 
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
