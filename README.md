@@ -15,6 +15,7 @@ Feature
 - `tuple_set<T...>`: Fails to compile if the tuple has more than one element of type T.
 
 - `tuple_index_of<T, Tuple>`: Index of type T in Tuple.
+- `tuple_indexes_of<T, Tuple>`: Indexes of type T in Tuple.
 
 - `Fn each_from_tuple(Fn, Tuple)`:  Call function on each element of a tuple.
 - `Fn each_from_tuple(Fn, Tuple, std::index_sequence<I...>)`:  Call function on each index I of a tuple.

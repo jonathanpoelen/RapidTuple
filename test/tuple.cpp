@@ -86,6 +86,11 @@ struct explicit_
   {}
 };
 
+struct empty {};
+struct empty2 {};
+struct empty_final final {};
+struct empty_final2 final {};
+
 template<template<class...> class Tuple, bool B>
 void test_type()
 {
@@ -114,6 +119,23 @@ void test_type()
   S<falcon::tuple_element_t<0, T const volatile>>{} = S<plain const volatile>{};
   S<falcon::tuple_element_t<1, T const volatile>>{} = S<ref>{};
   S<falcon::tuple_element_t<2, T const volatile>>{} = S<rref>{};
+
+  i_<sizeof(Tuple<>)>{} = i_<1>{};
+  i_<sizeof(Tuple<int, int>)>{} = i_<sizeof(int) * 2>{};
+  i_<sizeof(Tuple<empty>)>{} = i_<1>{};
+  i_<sizeof(Tuple<empty, empty>)>{} = i_<2>{};
+  i_<sizeof(Tuple<empty, empty2>)>{} = i_<1>{};
+  i_<sizeof(Tuple<empty_final, empty>)>{} = i_<1>{};
+  i_<sizeof(Tuple<empty_final, empty_final2>)>{} = i_<2>{};
+
+  falcon::tuple_index_of_t<int, Tuple<int>>{} = i_<0>{};
+  falcon::tuple_index_of_t<int, Tuple<char, int>>{} = i_<1>{};
+  falcon::tuple_index_of_t<int, Tuple<char, int, float>>{} = i_<1>{};
+
+  falcon::tuple_indexes_of_t<int, Tuple<>>{} = std::index_sequence<>{};
+  falcon::tuple_indexes_of_t<int, Tuple<int>>{} = std::index_sequence<0>{};
+  falcon::tuple_indexes_of_t<int, Tuple<int, int>>{} = std::index_sequence<0, 1>{};
+  falcon::tuple_indexes_of_t<int, Tuple<char, int, int>>{} = std::index_sequence<1, 2>{};
 
   using std::get;
 
@@ -154,15 +176,53 @@ template<class T>
 T const & as_const(T const & x)
 { return x; }
 
+template<class F, class... Ts>
+auto is_callable(int, F f, Ts && ... args)
+-> decltype(void(f(std::forward<Ts>(args)...)), std::true_type{})
+{ return {}; }
+
+template<class F, class... Ts>
+std::false_type is_callable(char, F, Ts && ...)
+{ return {}; }
+
 template<template<class...> class Tuple>
 void test_cons(std::streambuf & sbuf)
 {
   auto old_sbuf = std::cout.rdbuf(&sbuf);
 
-  // TODO test with a empty final class
   // TODO test with allocator_arg_t
 
 #define add_line std::cout << "--- l." << __LINE__ << '\n'
+  {
+    add_line;
+    using T = Tuple<>;
+    T t;
+    T{t};
+    T{std::move(t)};
+    t = t;
+    t = std::move(t);
+    t.swap(t);
+  }
+  {
+    add_line;
+    using T = Tuple<empty_final>;
+    T t;
+    T{t};
+    T{std::move(t)};
+    t = t;
+    t = std::move(t);
+    t.swap(t);
+  }
+  {
+    add_line;
+    using T = Tuple<O>;
+    T t;
+    T{t};
+    T{std::move(t)};
+    t = t;
+    t = std::move(t);
+    t.swap(t);
+  }
   {
     add_line;
     using T = Tuple<O>;
@@ -209,8 +269,9 @@ void test_cons(std::streambuf & sbuf)
     t = std::move(t);
     std::get<0>(t) = r;
     std::get<0>(t) = O{};
-    // T{t}; // TODO check if deleted
-    // T{as_const(t)}; // TODO check if deleted
+    is_callable(1, [](auto & x) -> decltype(x = x){}, t) = std::true_type{};
+    is_callable(1, [](auto & x) -> decltype(T{x}){}, t) = std::false_type{};
+    is_callable(1, [](auto & x) -> decltype(T{as_const(x)}){}, t) = std::false_type{};
     T{std::move(t)};
   }
   {

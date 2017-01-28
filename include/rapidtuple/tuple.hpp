@@ -172,21 +172,21 @@ namespace detail_
   using mpl_if_else = mpl_if_else_c<B::value, T, U>;
 
   template<size_t... Ints>
-  struct tuple_indices {};
+  struct tuple_indexes {};
 
   template<class... Ts>
   using range_for = brigand::range<size_t, 0, sizeof...(Ts)>;
 
   template<class>
-  struct mpl_list_to_tuple_indices;
+  struct mpl_list_to_tuple_indexes;
 
   template<class... Ints>
-  struct mpl_list_to_tuple_indices<brigand::list<Ints...>>
-  { using type = tuple_indices<Ints::value...>; };
+  struct mpl_list_to_tuple_indexes<brigand::list<Ints...>>
+  { using type = tuple_indexes<Ints::value...>; };
 
   template<class... Ts>
-  using tuple_indices_for = typename
-    mpl_list_to_tuple_indices<range_for<Ts...>>::type;
+  using tuple_indexes_for = typename
+    mpl_list_to_tuple_indexes<range_for<Ts...>>::type;
 
   template<class Ints, class... Ts>
   struct tuple_impl;
@@ -322,7 +322,7 @@ public:
   };
 
   template<size_t... Ints, class... Ts>
-  class tuple_impl<tuple_indices<Ints...>, Ts...>
+  class tuple_impl<tuple_indexes<Ints...>, Ts...>
   : public tuple_leaf<Ints, Ts>...
   {
     template<class... Us>
@@ -353,7 +353,7 @@ public:
 
     template<class Tuple>
     // PERF specialize for tuple
-    explicit constexpr tuple_impl(tuple_indices<Ints...>, Tuple && t)
+    explicit constexpr tuple_impl(tuple_indexes<Ints...>, Tuple && t)
     noexcept(mpl_all<
       is_nothrow_constructible<Ts, decltype(get<Ints>(
         std::forward<Tuple>(t)
@@ -368,7 +368,7 @@ public:
     template<class Tuple>
     // PERF specialize for tuple
     FALCON_CONSTEXPR_AFTER_CXX11
-    void assign(tuple_indices<Ints...>, Tuple && t)
+    void assign(tuple_indexes<Ints...>, Tuple && t)
     noexcept(noexcept(FALCON_UNPACK(
       std::declval<tuple_leaf<Ints, Ts>&>()
       = get<Ints>(std::forward<Tuple>(t))
@@ -399,10 +399,68 @@ public:
   { using type = brigand::list<std::tuple_element_t<Ints::value, Tuple>...>; };
 }
 
+namespace detail_
+{
+  template<class T, size_t I>
+  brigand::size_t<I>
+  tuple_index_of_impl(detail_::tuple_leaf<I, T> const &);
+
+
+  template<class... i>
+  struct index_sequence_from
+  { using type = std::integer_sequence<std::size_t, i::value...>; };
+
+  template<class T, class Tuple>
+  struct tuple_indexes_of_impl;
+
+  template<class T, std::size_t... ints, class... Ts>
+  struct tuple_indexes_of_impl<T, tuple_impl<tuple_indexes<ints...>, Ts...>>
+  : brigand::wrap<
+    brigand::append<
+      detail_::mpl_if_else<
+        detail_::is_same<T, Ts>,
+        brigand::list<brigand::size_t<ints>>,
+        brigand::list<>
+      >...
+    >,
+    detail_::index_sequence_from
+  >
+  {};
+
+
+  template<class Ints, class Tuple>
+  struct tuple_to_tuple_impl;
+
+  template<class... Ints, class Tuple>
+  struct tuple_to_tuple_impl<brigand::list<Ints...>, Tuple>
+  {
+    using type = detail_::tuple_impl<
+      tuple_indexes<Ints::value...>,
+      tuple_element_t<Ints::value, Tuple>...
+    >;
+  };
+}
 
 template<class T, class Tuple>
-// TODO generic version
-struct tuple_index_of;
+struct tuple_index_of
+: decltype(detail_::tuple_index_of_impl<T>(std::declval<
+  typename detail_::tuple_to_tuple_impl<
+    brigand::range<size_t, 0, std::tuple_size<Tuple>::value>,
+    Tuple
+  >::type const &
+>()))
+{};
+
+template<class T, class Tuple>
+struct tuple_indexes_of
+: detail_::tuple_indexes_of_impl<
+  T,
+  typename detail_::tuple_to_tuple_impl<
+    brigand::range<size_t, 0, std::tuple_size<Tuple>::value>,
+    Tuple
+  >::type
+> {};
+
 
 template<class T, class Tuple>
 struct tuple_index_of<T, Tuple const>
@@ -427,12 +485,37 @@ template<class T>
 constexpr size_t tuple_index_of_v = tuple_index_of<T>::value;
 #endif
 
+
+template<class T, class Tuple>
+struct tuple_indexes_of<T, Tuple const>
+: tuple_indexes_of<T, Tuple>::type
+{};
+
+template<class T, class Tuple>
+struct tuple_indexes_of<T, Tuple volatile>
+: tuple_indexes_of<T, Tuple>::type
+{};
+
+template<class T, class Tuple>
+struct tuple_indexes_of<T, Tuple const volatile>
+: tuple_indexes_of<T, Tuple>::type
+{};
+
+template<class T, class Tuple>
+using tuple_indexes_of_t = typename tuple_indexes_of<T, Tuple>::type;
+
+#if __cplusplus > FALCON_CXX_STD_14
+template<class T>
+constexpr size_t tuple_indexes_of_v = tuple_indexes_of<T>::value;
+#endif
+
+
 template<class... Ts>
 class tuple
 {
-  using indices_ = detail_::tuple_indices_for<Ts...>;
+  using indexes_ = detail_::tuple_indexes_for<Ts...>;
 
-  using base = detail_::tuple_impl<indices_, Ts...>;
+  using base = detail_::tuple_impl<indexes_, Ts...>;
   base base_;
 
   template<class... Us>
@@ -560,8 +643,8 @@ public:
     > = false
   >
   constexpr tuple(Tuple && t)
-  noexcept(noexcept(base(indices_{}, std::forward<Tuple>(t))))
-  : base_(indices_{}, std::forward<Tuple>(t))
+  noexcept(noexcept(base(indexes_{}, std::forward<Tuple>(t))))
+  : base_(indexes_{}, std::forward<Tuple>(t))
   {}
 
   // 4, 5, 6, 7 (explicit)
@@ -574,8 +657,8 @@ public:
     > = false
   >
   explicit constexpr tuple(Tuple && t)
-  noexcept(noexcept(base(indices_{}, std::forward<Tuple>(t))))
-  : base_(indices_{}, std::forward<Tuple>(t))
+  noexcept(noexcept(base(indexes_{}, std::forward<Tuple>(t))))
+  : base_(indexes_{}, std::forward<Tuple>(t))
   {}
 
 
@@ -616,10 +699,10 @@ public:
   tuple & operator=(Tuple && t)
   noexcept(noexcept(
     std::declval<base&>()
-    .assign(indices_{}, std::forward<Tuple>(t))
+    .assign(indexes_{}, std::forward<Tuple>(t))
   ))
   {
-    base_.assign(indices_{}, std::forward<Tuple>(t));
+    base_.assign(indexes_{}, std::forward<Tuple>(t));
     return *this;
   }
 
@@ -809,24 +892,27 @@ get(tuple<Ts...> const && t) noexcept
 
 //@}
 
-namespace detail_ {
-  template<class T, size_t I>
-  brigand::size_t<I>
-  index_of_impl(detail_::tuple_leaf<I, T> const &);
-}
-
 template<class T, class... Ts>
 struct tuple_index_of<T, tuple<Ts...>>
-: decltype(detail_::index_of_impl<T>(
-  std::declval<detail_::tuple_impl<
-    detail_::tuple_indices_for<Ts...>,
+: decltype(detail_::tuple_index_of_impl<T>(std::declval<
+  detail_::tuple_impl<
+    detail_::tuple_indexes_for<Ts...>,
     Ts...
   > const &
 >()))
 {};
 
-// TODO tuple_as<List>/tuple_elements
-// TODO tuple_count_element<T>
+template<class T, class... Ts>
+struct tuple_indexes_of<T, tuple<Ts...>>
+: detail_::tuple_indexes_of_impl<
+  T,
+  detail_::tuple_impl<
+    detail_::tuple_indexes_for<Ts...>,
+    Ts...
+  >
+>
+{};
+
 
 template<class... Ts>
 void swap(tuple<Ts...> & t1, tuple<Ts...> & t2)
@@ -1368,11 +1454,11 @@ namespace detail_{
 
 
   template<class T, std::size_t I>
-  constexpr std::integral_constant<std::size_t, I> index_of_impl(tuple_leaf<I, T> const &);
+  constexpr std::integral_constant<std::size_t, I> tuple_index_of_impl(tuple_leaf<I, T> const &);
 
   template<class T, class Tuple>
   struct tuple_index_of
-  : decltype(index_of_impl<T>(std::declval<Tuple&>()))
+  : decltype(tuple_index_of_impl<T>(std::declval<Tuple&>()))
   {};
 
 
