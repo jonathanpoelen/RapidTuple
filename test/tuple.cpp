@@ -431,6 +431,8 @@ int main()
   Check<noexcept(tuple1(std::declval<tuple1 &>()))>();
   Check<noexcept(tuple1(std::declval<tuple1 const &>()))>();
   Check<noexcept(tuple1(tuple2()))>();
+  Check<noexcept(tuple1() = tuple2())>();
+  Check<noexcept(tuple1() = std::array<int, 1>{})>();
   Check<falcon::is_nothrow_swappable<tuple1>::value>();
   Check<falcon::is_nothrow_swappable<tuple2>::value>();
 
@@ -443,6 +445,8 @@ int main()
   Check<noexcept(tuple3(std::declval<tuple3 &>()))>();
   Check<noexcept(tuple3(std::declval<tuple3 const &>()))>();
   Check<noexcept(tuple3(tuple4()))>();
+  Check<noexcept(tuple3() = tuple4())>();
+  Check<noexcept(tuple3() = std::array<int, 2>{})>();
   Check<falcon::is_nothrow_swappable<tuple3>::value>();
   Check<falcon::is_nothrow_swappable<tuple4>::value>();
 
@@ -466,6 +470,11 @@ int main()
   Check<!noexcept(tuple6(std::declval<tuple6 const &>()))>();
   Check<!falcon::is_nothrow_swappable<tuple5>::value>();
   Check<!falcon::is_nothrow_swappable<tuple6>::value>();
+
+  using tuple_string = falcon::tuple<std::string>;
+  Check<!noexcept(tuple_string() = as_const(tuple_string()))>();
+  Check< noexcept(tuple_string() = tuple_string())>();
+  Check< noexcept(tuple_string() = {})>();
 
 
 

@@ -352,7 +352,7 @@ public:
     {}
 
     template<class Tuple>
-    // PERF specialize for tuple
+    // TODO PERF specialize for tuple
     explicit constexpr tuple_impl(tuple_indexes<Ints...>, Tuple && t)
     noexcept(mpl_all<
       is_nothrow_constructible<Ts, decltype(get<Ints>(
@@ -362,11 +362,11 @@ public:
     : tuple_leaf<Ints, Ts>(get<Ints>(std::forward<Tuple>(t)))...
     {}
 
-    tuple_impl & operator = (tuple_impl const &) = delete;
-    tuple_impl & operator = (tuple_impl &&) = delete;
+    tuple_impl & operator=(tuple_impl const &) = delete;
+    tuple_impl & operator=(tuple_impl &&) = delete;
 
     template<class Tuple>
-    // PERF specialize for tuple
+    // TODO PERF specialize for tuple
     FALCON_CONSTEXPR_AFTER_CXX11
     void assign(tuple_indexes<Ints...>, Tuple && t)
     noexcept(noexcept(FALCON_UNPACK(
@@ -681,19 +681,26 @@ public:
 //       tuple(allocator_arg_t, Alloc const & a, const pair<U1, U2>&);
 //   template<class Alloc, class U1, class U2>
 //       tuple(allocator_arg_t, Alloc const & a, pair<U1, U2>&&);
-//
-//   tuple& operator=(const tuple&);
-//   tuple&
-//       operator=(tuple&&) noexcept(AND(std::is_nothrow_move_assignable<T>::value ...));
-//   template<class... U>
-//       tuple& operator=(const tuple<U...>&);
-//   template<class... U>
-//       tuple& operator=(tuple<U...>&&);
-//   template<class U1, class U2>
-//       tuple& operator=(const pair<U1, U2>&); // iff sizeof...(T) == 2
-//   template<class U1, class U2>
-//       tuple& operator=(pair<U1, U2>&&); //iffsizeof...(T) == 2
 
+  tuple & operator=(tuple const & t)
+  noexcept(noexcept(
+    std::declval<base&>()
+    .assign(indexes_{}, t)
+  ))
+  {
+    base_.assign(indexes_{}, t);
+    return *this;
+  }
+
+  tuple & operator=(tuple && t)
+  noexcept(noexcept(
+    std::declval<base&>()
+    .assign(indexes_{}, std::move(t))
+  ))
+  {
+    base_.assign(indexes_{}, std::move(t));
+    return *this;
+  }
 
   template<class Tuple>
   tuple & operator=(Tuple && t)
@@ -799,7 +806,7 @@ struct tuple<>
   noexcept
   {}
 
-  tuple & operator = (tuple const &) = default;
+  tuple & operator=(tuple const &) = default;
 
   template<
     class Tuple,
@@ -808,7 +815,7 @@ struct tuple<>
       bool
     > = false
   >
-  tuple & operator = (Tuple const &)
+  tuple & operator=(Tuple const &)
   { return *this; }
 
   void swap(tuple&) noexcept {}
