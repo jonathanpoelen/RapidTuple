@@ -74,6 +74,38 @@ struct O
   O&operator=(O const &) { std::cout << "O=(O const &)\n"; return *this; }
 };
 
+struct allocator {};
+
+struct Oa
+{
+  Oa() { std::cout << "Oa()\n"; }
+  Oa(int& i) = delete; // { std::cout << "Oa(" << i << "&)\n"; }
+  Oa(int&& i) { std::cout << "Oa(" << i << "&&)\n"; }
+  Oa(int const & i) = delete; // { std::cout << "Oa(" << i << " const &)\n"; }
+  Oa(Oa &) { std::cout << "Oa(Oa &)\n"; }
+  Oa(Oa &&) { std::cout << "Oa(Oa &&)\n"; }
+  Oa(Oa const &) { std::cout << "Oa(Oa const &)\n"; }
+  Oa&operator=(Oa &) { std::cout << "Oa=(Oa &)\n"; return *this; }
+  Oa&operator=(Oa &&) { std::cout << "Oa=(Oa &&)\n"; return *this; }
+  Oa&operator=(Oa const &) { std::cout << "Oa=(Oa const &)\n"; return *this; }
+
+  Oa(allocator) { std::cout << "Oa()\n"; }
+  Oa(int& i, allocator) = delete; // { std::cout << "Oa(" << i << "&)\n"; }
+  Oa(int&& i, allocator) { std::cout << "Oa(" << i << "&&)\n"; }
+  Oa(int const & i, allocator) = delete; // { std::cout << "Oa(" << i << " const &)\n"; }
+  Oa(Oa &, allocator) { std::cout << "Oa(Oa &)\n"; }
+  Oa(Oa &&, allocator) { std::cout << "Oa(Oa &&)\n"; }
+  Oa(Oa const &, allocator) { std::cout << "Oa(Oa const &)\n"; }
+};
+
+namespace std
+{
+  template<class Alloc>
+  struct uses_allocator<::Oa, Alloc>
+  : std::true_type
+  {};
+}
+
 struct explicit_noexcept
 {
   explicit explicit_noexcept(int) noexcept
@@ -178,15 +210,21 @@ T const & as_const(T const & x)
 
 template<class F, class... Ts>
 auto is_callable(int, F f, Ts && ... args)
--> decltype(void(f(std::forward<Ts>(args)...)), std::true_type{})
+-> decltype((void)(f(std::forward<Ts>(args)...)), std::true_type{})
 { return {}; }
 
 template<class F, class... Ts>
 std::false_type is_callable(char, F, Ts && ...)
 { return {}; }
 
-template<template<class...> class Tuple>
-void test_cons(std::streambuf & sbuf)
+#ifdef IN_IDE_PARSER
+#define DOT3
+#else
+#define DOT3 ...
+#endif
+
+template<template<class...> class Tuple, class O, class... TArgs>
+void test_cons(std::streambuf & sbuf, TArgs const & ... args)
 {
   auto old_sbuf = std::cout.rdbuf(&sbuf);
 
@@ -197,8 +235,8 @@ void test_cons(std::streambuf & sbuf)
     add_line;
     using T = Tuple<>;
     T t;
-    T{t};
-    T{std::move(t)};
+    T{/*bug(std::tuple) args DOT3, */t};
+    T{/*bug(std::tuple) args DOT3, */std::move(t)};
     t = t;
     t = std::move(t);
     t.swap(t);
@@ -207,8 +245,8 @@ void test_cons(std::streambuf & sbuf)
     add_line;
     using T = Tuple<empty_final>;
     T t;
-    T{t};
-    T{std::move(t)};
+    T{args DOT3, t};
+    T{args DOT3, std::move(t)};
     t = t;
     t = std::move(t);
     t.swap(t);
@@ -217,8 +255,8 @@ void test_cons(std::streambuf & sbuf)
     add_line;
     using T = Tuple<O>;
     T t;
-    T{t};
-    T{std::move(t)};
+    T{args DOT3, t};
+    T{args DOT3, std::move(t)};
     t = t;
     t = std::move(t);
     t.swap(t);
@@ -228,51 +266,51 @@ void test_cons(std::streambuf & sbuf)
     using T = Tuple<O>;
     T t;
     t = t;
-    t = T{O(1)};
+    t = T{args DOT3, O(1)};
     std::get<0>(t) = 3;
-    T{t};
-    T{as_const(t)};
-    T{std::move(t)};
+    T{args DOT3, t};
+    T{args DOT3, as_const(t)};
+    T{args DOT3, std::move(t)};
   }
   {
     add_line;
     using T = Tuple<O&>;
     O r;
-    T t{r};
+    T t{args DOT3, r};
     t = t;
-    t = T{r};
+    t = T{args DOT3, r};
     std::get<0>(t) = r;
-    T{t};
-    T{as_const(t)};
-    T{std::move(t)};
+    T{args DOT3, t};
+    T{args DOT3, as_const(t)};
+    T{args DOT3, std::move(t)};
   }
   {
     add_line;
     using T = Tuple<O const&>;
     O r;
     O const cr;
-    T t{r};
-    T ct{cr};
-    T{t};
-    T{as_const(t)};
-    T{std::move(t)};
-    T{ct};
-    T{as_const(ct)};
-    T{std::move(ct)};
+    T t{args DOT3, r};
+    T ct{args DOT3, cr};
+    T{args DOT3, t};
+    T{args DOT3, as_const(t)};
+    T{args DOT3, std::move(t)};
+    T{args DOT3, ct};
+    T{args DOT3, as_const(ct)};
+    T{args DOT3, std::move(ct)};
   }
   {
     add_line;
     using T = Tuple<O&&>;
     O r;
-    T t{O{}};
+    T t{args DOT3, O{}};
     t = t;
     t = std::move(t);
     std::get<0>(t) = r;
     std::get<0>(t) = O{};
     is_callable(1, [](auto & x) -> decltype(x = x){}, t) = std::true_type{};
-    is_callable(1, [](auto & x) -> decltype(T{x}){}, t) = std::false_type{};
-    is_callable(1, [](auto & x) -> decltype(T{as_const(x)}){}, t) = std::false_type{};
-    T{std::move(t)};
+    is_callable(1, [](auto & x) -> decltype(T{/*bug(std::tuple) args DOT3, */x}){}, t) = std::false_type{};
+    is_callable(1, [](auto & x) -> decltype(T{/*bug(std::tuple) args DOT3, */as_const(x)}){}, t) = std::false_type{};
+    T{args DOT3, std::move(t)};
   }
   {
     add_line;
@@ -281,11 +319,11 @@ void test_cons(std::streambuf & sbuf)
     P const cr;
     P r;
 
-    T t{P{}};
-    T{cr};
-    T{r};
-    T{t};
-    T{std::move(t)};
+    T t{args DOT3, P{}};
+    T{args DOT3, cr};
+    T{args DOT3, r};
+    T{args DOT3, t};
+    T{args DOT3, std::move(t)};
     t = P{};
     t = cr;
     t = r;
@@ -295,7 +333,7 @@ void test_cons(std::streambuf & sbuf)
   {
     add_line;
     using T = Tuple<std::array<O,2>>;
-    T({2,1});
+    T(args DOT3, {2,1});
   }
   {
     using T1 = Tuple<long, int>;
@@ -306,7 +344,7 @@ void test_cons(std::streambuf & sbuf)
     CHECK_EQUAL(get<1>(t1), 0);
     CHECK_EQUAL(get<long>(t1), 0);
     CHECK_EQUAL(get<int>(t1), 0);
-    t1 = T1{1,2};
+    t1 = T1{args DOT3, 1,2};
     CHECK_EQUAL(get<0>(t1), 1);
     CHECK_EQUAL(get<1>(t1), 2);
     CHECK_EQUAL(get<long>(t1), 1);
@@ -332,10 +370,10 @@ void test_cons(std::streambuf & sbuf)
     CHECK_EQUAL(get<long>(t1), 1);
     CHECK_EQUAL(get<int>(t1), 2);
     t2 = std::move(t1);
-    T1(std::move(t1));
-    T1{t1};
-    T1(std::move(t2));
-    T1{t2};
+    T1(args DOT3, std::move(t1));
+    T1{args DOT3, t1};
+    T1(args DOT3, std::move(t2));
+    T1{args DOT3, t2};
   }
 #undef add_line
   std::cout.rdbuf(old_sbuf);
@@ -343,6 +381,25 @@ void test_cons(std::streambuf & sbuf)
 
 inline void test_special_cons()
 {
+  {
+    using T = falcon::tuple<>;
+    T t;
+    T{std::allocator_arg_t{}, allocator{}, t};
+    T{std::allocator_arg_t{}, allocator{}, std::move(t)};
+  }
+  {
+    auto sbuf = std::cout.rdbuf(nullptr);
+    using T = falcon::tuple<O&&>;
+    std::allocator_arg_t arg;
+    allocator a;
+    std::false_type no;
+    std::true_type yes;
+    T t{O{}};
+    is_callable(1, [](auto & x) -> decltype(T{arg, a, x}){}, t) = no;
+    is_callable(1, [](auto & x) -> decltype(T{arg, a, as_const(x)}){}, t) = no;
+    is_callable(1, [](auto & x) -> decltype(T{arg, a, std::move(x)}){}, t) = yes;
+    std::cout.rdbuf(sbuf);
+  }
   {
     using T = falcon::tuple<>;
     std::array<int, 0> a;
@@ -413,12 +470,24 @@ int main()
   test_type<falcon::tuple, true>();
 
   std::stringbuf sbuf1;
-  test_cons<std::tuple>(sbuf1);
+  test_cons<std::tuple, O>(sbuf1);
+  test_cons<std::tuple, Oa>(sbuf1, std::allocator_arg_t{}, allocator{});
+  test_cons<std::tuple, O>(sbuf1);
+  test_cons<std::tuple, Oa>(sbuf1, std::allocator_arg_t{}, allocator{});
   auto str = sbuf1.str();
   CHECK_NE(str.size(), 0u);
   //std::cerr << str << '\n';
   checkbuf sbuf2(std::move(str));
-  test_cons<falcon::tuple>(sbuf2);
+  test_cons<falcon::tuple, O>(sbuf1);
+  test_cons<falcon::tuple, Oa>(sbuf1, std::allocator_arg_t{}, allocator{});
+  test_cons<falcon::tuple, O>(sbuf1);
+  test_cons<falcon::tuple, Oa>(sbuf1, std::allocator_arg_t{}, allocator{});
+
+  {
+    falcon::tuple<> t;
+    falcon::tuple<>{std::allocator_arg_t{}, allocator{}, t};
+    falcon::tuple<>{std::allocator_arg_t{}, allocator{}, std::move(t)};
+  }
 
   test_special_cons();
 

@@ -89,6 +89,10 @@ namespace detail_
   template<class T, class U>
   using is_convertible = typename std::is_convertible<T, U>::type;
 
+  template<class T, class... U>
+  using is_constructible
+    = typename std::is_constructible<T, U...>::type;
+
   template<class T, class U>
   using is_nothrow_constructible
     = typename std::is_nothrow_constructible<T, U>::type;
@@ -203,9 +207,26 @@ namespace detail_
   {
     constexpr tuple_leaf() = default;
 
-    template<class Alloc>
+    template<
+      class Alloc,
+      std::enable_if_t<
+        !std::uses_allocator<T, Alloc>::value,
+        bool
+      > = true
+    >
+    tuple_leaf(allocator_arg_t, Alloc const &)
+    : T()
+    {}
+
+    template<
+      class Alloc,
+      std::enable_if_t<
+        std::uses_allocator<T, Alloc>::value,
+        bool
+      > = true
+    >
     tuple_leaf(allocator_arg_t, Alloc const & a)
-    : T(allocator_arg_t(), a)
+    : T(a)
     {}
 
     tuple_leaf(tuple_leaf const &) = default;
@@ -214,8 +235,7 @@ namespace detail_
     template<
       class U,
       std::enable_if_t<
-        !std::is_same<uncvref_t<U>, tuple_leaf>::value &&
-        std::is_constructible<T, U>::value,
+        !std::is_same<uncvref_t<U>, tuple_leaf>::value,
         bool
       > = true
     >
@@ -224,9 +244,26 @@ namespace detail_
     : T(std::forward<U>(v))
     {}
 
-    template<class Alloc, class U>
+    template<
+      class Alloc, class U,
+      std::enable_if_t<
+        !std::uses_allocator<T, Alloc>::value,
+        bool
+      > = true
+    >
+    explicit tuple_leaf(allocator_arg_t, Alloc const &, U && v)
+    : T(std::forward<U>(v))
+    {}
+
+    template<
+      class Alloc, class U,
+      std::enable_if_t<
+        std::uses_allocator<T, Alloc>::value,
+        bool
+      > = true
+    >
     explicit tuple_leaf(allocator_arg_t, Alloc const & a, U && v)
-    : T(allocator_arg_t(), a, std::forward<U>(v))
+    : T(std::forward<U>(v), a)
     {}
 
 
@@ -271,16 +308,32 @@ public:
     tuple_leaf(tuple_leaf const &) = default;
     tuple_leaf(tuple_leaf &&) = default;
 
-    template <class Alloc>
+    template<
+      class Alloc,
+      std::enable_if_t<
+        !std::uses_allocator<T, Alloc>::value,
+        bool
+      > = true
+    >
+    tuple_leaf(allocator_arg_t, Alloc const &)
+    : value()
+    {}
+
+    template<
+      class Alloc,
+      std::enable_if_t<
+        std::uses_allocator<T, Alloc>::value,
+        bool
+      > = true
+    >
     tuple_leaf(allocator_arg_t, Alloc const & a)
-    : value(allocator_arg_t(), a)
+    : value(a)
     {}
 
     template <
       class U,
       std::enable_if_t<
-        !std::is_same<uncvref_t<U>, tuple_leaf>::value &&
-        std::is_constructible<T, U>::value,
+        !std::is_same<uncvref_t<U>, tuple_leaf>::value,
         bool
       > = true
     >
@@ -289,9 +342,26 @@ public:
     : value(std::forward<U>(v))
     {}
 
-    template <class U, class Alloc>
+    template<
+      class Alloc, class U,
+      std::enable_if_t<
+        !std::uses_allocator<T, Alloc>::value,
+        bool
+      > = true
+    >
+    explicit tuple_leaf(allocator_arg_t, Alloc const &, U && v)
+    : value(std::forward<U>(v))
+    {}
+
+    template<
+      class Alloc, class U,
+      std::enable_if_t<
+        std::uses_allocator<T, Alloc>::value,
+        bool
+      > = true
+    >
     explicit tuple_leaf(allocator_arg_t, Alloc const & a, U && v)
-    : value(allocator_arg_t(), a, std::forward<U>(v))
+    : value(std::forward<U>(v), a)
     {}
 
 
@@ -346,7 +416,7 @@ public:
     : tuple_leaf<Ints, Ts>(std::forward<Us>(v))...
     {}
 
-    template<class Alloc, class... Us>
+    template<class Alloc,class... Us>
     explicit constexpr tuple_impl(allocator_arg_t, Alloc const & a, Us && ... v)
     : tuple_leaf<Ints, Ts>(allocator_arg_t(), a, std::forward<Us>(v))...
     {}
@@ -360,6 +430,17 @@ public:
       ))>...
     >::value)
     : tuple_leaf<Ints, Ts>(get<Ints>(std::forward<Tuple>(t)))...
+    {}
+
+    template<class Alloc,class Tuple>
+    // TODO PERF specialize for tuple
+    explicit constexpr tuple_impl(
+      allocator_arg_t, Alloc const & a,
+      tuple_indexes<Ints...>, Tuple && t)
+    : tuple_leaf<Ints, Ts>(
+      allocator_arg_t(), a,
+      get<Ints>(std::forward<Tuple>(t))
+    )...
     {}
 
     tuple_impl & operator=(tuple_impl const &) = delete;
@@ -397,6 +478,14 @@ public:
   template<class Tuple, class... Ints>
   struct tuple_to_list<Tuple, brigand::list<Ints...>>
   { using type = brigand::list<std::tuple_element_t<Ints::value, Tuple>...>; };
+
+  template<class Tuple, class... Ints>
+  struct tuple_to_list<Tuple &, brigand::list<Ints...>>
+  { using type = brigand::list<std::tuple_element_t<Ints::value, Tuple> &...>; };
+
+  template<class Tuple, class... Ints>
+  struct tuple_to_list<Tuple &&, brigand::list<Ints...>>
+  { using type = brigand::list<std::tuple_element_t<Ints::value, Tuple> &&...>; };
 }
 
 namespace detail_
@@ -509,6 +598,86 @@ template<class T>
 constexpr size_t tuple_indexes_of_v = tuple_indexes_of<T>::value;
 #endif
 
+namespace detail_
+{
+  template<bool, class T, class Alloc, class... Args>
+  struct is_allocator_extended_constructible_impl
+  : std::is_constructible<T, Args..., Alloc const &>
+  {};
+
+  template<class T, class Alloc, class... Args>
+  struct is_allocator_extended_constructible_impl<false, T, Alloc, Args...>
+  : std::is_constructible<T, Args...>
+  {};
+
+  template<class T, class Alloc>
+  struct is_allocator_extended_constructible_impl<false, T, Alloc>
+  : std::is_default_constructible<T>
+  {};
+
+
+  template<class T>
+  std::true_type is_implicitly_convertible(int, T const &);
+
+  struct any
+  {
+    template<class... Ts>
+    any(Ts const & ...);
+  };
+
+  template<class T>
+  std::false_type is_implicitly_convertible(char, any);
+
+
+  template<bool, class T, class Alloc, class... Args>
+  struct is_allocator_extended_implicitly_constructible_impl
+  : decltype(is_implicitly_convertible<T>(
+    1, {std::declval<Args>()..., std::declval<Alloc const &>()}
+  ))
+  {};
+
+  template<class T, class Alloc>
+  struct is_allocator_extended_implicitly_constructible_impl<true, T, Alloc>
+  : decltype(is_implicitly_convertible<T>(
+    1, std::declval<Alloc const &>()
+  ))
+  {};
+
+  template<class T, class Alloc, class... Args>
+  struct is_allocator_extended_implicitly_constructible_impl<
+    false, T, Alloc, Args...
+  >
+  : decltype(is_implicitly_convertible<T>(1, std::declval<Args>()...))
+  {};
+
+  template<class T, class Alloc>
+  struct is_allocator_extended_implicitly_constructible_impl<false, T, Alloc>
+  : std::is_default_constructible<T>
+  {};
+
+  template<class T, class Alloc, class... Args>
+  struct is_allocator_extended_constructible
+  : detail_::is_allocator_extended_constructible_impl<
+    std::uses_allocator<T, Alloc>::value, T, Alloc, Args...
+  >
+  {};
+
+  template<class T, class Alloc, class... Args>
+  using is_allocator_extended_constructible_t
+    = typename is_allocator_extended_constructible<T, Alloc, Args...>::type;
+
+  template<class T, class Alloc, class... Args>
+  struct is_allocator_extended_implicitly_constructible
+  : detail_::is_allocator_extended_implicitly_constructible_impl<
+    std::uses_allocator<T, Alloc>::value, T, Alloc, Args...
+  >
+  {};
+
+  template<class T, class Alloc, class... Args>
+  using is_allocator_extended_implicitly_constructible_t
+    = typename is_allocator_extended_implicitly_constructible<
+      T, Alloc, Args...>::type;
+}
 
 template<class... Ts>
 class tuple
@@ -528,17 +697,26 @@ class tuple
     !std::is_same<Tuple, tuple>::value
   >;
 
-  template<class Tuple, size_t tsz = std::tuple_size<uncv_t<Tuple>>::value>
-  using tuple_is_implicitly_convertible = detail_::is_same<
+  template<
+    class Tuple, class Lbd,
+    size_t tsz = std::tuple_size<uncvref_t<Tuple>>::value
+  >
+  using tuple_is_implicitly_xxx = detail_::is_same<
     brigand::transform<
       typename detail_::tuple_to_list<
         Tuple,
         brigand::range<size_t, 0, tsz>
       >::type,
       brigand::list<Ts...>,
-      brigand::bind<detail_::is_convertible, brigand::_1, brigand::_2>
+      Lbd
     >,
     brigand::filled_list<std::true_type, tsz>
+  >;
+
+  template<class Tuple>
+  using tuple_is_implicitly_convertible = tuple_is_implicitly_xxx<
+    Tuple,
+    brigand::bind<detail_::is_convertible, brigand::_1, brigand::_2>
   >;
 
 public:
@@ -638,7 +816,7 @@ public:
     class Tuple,
     std::enable_if_t<
       is_tuple_like<uncvref_t<Tuple>>::value &&
-      tuple_is_implicitly_convertible<unref_t<Tuple>>::value,
+      tuple_is_implicitly_convertible<Tuple>::value,
       bool
     > = false
   >
@@ -652,7 +830,7 @@ public:
     class Tuple,
     std::enable_if_t<
       is_tuple_like<uncvref_t<Tuple>>::value &&
-      !tuple_is_implicitly_convertible<unref_t<Tuple>>::value,
+      !tuple_is_implicitly_convertible<Tuple>::value,
       bool
     > = false
   >
@@ -662,25 +840,200 @@ public:
   {}
 
 
-//   // allocator-extended constructors
-//   template<class Alloc>
-//       tuple(allocator_arg_t, Alloc const & a);
-//   template<class Alloc>
-//       tuple(allocator_arg_t, Alloc const & a, const T&...);
-//   template<class Alloc, class... U>
-//       tuple(allocator_arg_t, Alloc const & a, U&&...);
-//   template<class Alloc>
-//       tuple(allocator_arg_t, Alloc const & a, const tuple&);
-//   template<class Alloc>
-//       tuple(allocator_arg_t, Alloc const & a, tuple&&);
-//   template<class Alloc, class... U>
-//       tuple(allocator_arg_t, Alloc const & a, const tuple<U...>&);
-//   template<class Alloc, class... U>
-//       tuple(allocator_arg_t, Alloc const & a, tuple<U...>&&);
-//   template<class Alloc, class U1, class U2>
-//       tuple(allocator_arg_t, Alloc const & a, const pair<U1, U2>&);
-//   template<class Alloc, class U1, class U2>
-//       tuple(allocator_arg_t, Alloc const & a, pair<U1, U2>&&);
+  // allocator-extended constructors
+
+  // 10 (implicit)
+  template<
+    class Alloc,
+    std::enable_if_t<
+      detail_::mpl_all<
+        detail_::is_allocator_extended_implicitly_constructible_t<Ts, Alloc>
+      ...>::value,
+      bool
+    > = true
+  >
+  tuple(allocator_arg_t, Alloc const & a)
+  : base_(allocator_arg_t{}, a)
+  {}
+
+  // 10 (explicit)
+  template<
+    class Alloc,
+    std::enable_if_t<
+      !detail_::mpl_all<
+        detail_::is_allocator_extended_implicitly_constructible_t<Ts, Alloc>
+      ...>::value &&
+      detail_::mpl_all<
+        detail_::is_allocator_extended_constructible_t<Ts, Alloc>
+      ...>::value,
+      bool
+    > = true
+  >
+  explicit tuple(allocator_arg_t, Alloc const & a)
+  : base_(allocator_arg_t{}, a)
+  {}
+
+  // 11 (implicit)
+  template<
+    class Alloc,
+    std::enable_if_t<
+      detail_::mpl_all<
+        detail_::is_allocator_extended_implicitly_constructible_t<
+          Ts, Alloc, Ts const &
+        >
+      ...>::value,
+      bool
+    > = true
+  >
+  constexpr tuple(allocator_arg_t, Alloc const & a, Ts const &... args)
+  : base_(allocator_arg_t{}, a, args...)
+  {}
+
+  // 11 (explicit)
+  template<
+    class Alloc,
+    std::enable_if_t<
+      !detail_::mpl_all<
+        detail_::is_allocator_extended_implicitly_constructible_t<
+          Ts, Alloc, Ts const &
+        >
+      ...>::value &&
+      detail_::mpl_all<
+        detail_::is_allocator_extended_constructible_t<
+          Ts, Alloc, Ts const &
+        >
+      ...>::value,
+      bool
+    > = true
+  >
+  explicit constexpr tuple(allocator_arg_t, Alloc const & a, Ts const &... args)
+  : base_(allocator_arg_t{}, a, args...)
+  {}
+
+  // 12 (implicit)
+  template<
+    class Alloc,
+    class... Us,
+    std::enable_if_t<
+      !pack_expands_to_this_tuple<Us...>::value &&
+      detail_::mpl_all<
+        detail_::is_allocator_extended_implicitly_constructible_t<
+          Ts, Alloc, Us
+        >
+      ...>::value,
+      bool
+    > = true
+  >
+  constexpr tuple(allocator_arg_t, Alloc const & a, Us &&... args)
+  : base_(allocator_arg_t{}, a, std::forward<Us>(args)...)
+  {}
+
+  // 12 (explicit)
+  template<
+    class Alloc,
+    class... Us,
+    std::enable_if_t<
+      !pack_expands_to_this_tuple<Us...>::value &&
+      !detail_::mpl_all<
+        detail_::is_allocator_extended_implicitly_constructible_t<
+          Ts, Alloc, Us
+        >
+      ...>::value &&
+      detail_::mpl_all<
+        detail_::is_allocator_extended_constructible_t<
+          Ts, Alloc, Us
+        >
+      ...>::value,
+      bool
+    > = true
+  >
+  explicit constexpr tuple(allocator_arg_t, Alloc const & a, Us &&... args)
+  : base_(allocator_arg_t{}, a, std::forward<Us>(args)...)
+  {}
+
+  // 13, 14, 15, 16 (implicit)
+  template<
+    class Alloc,
+    class Tuple,
+    std::enable_if_t<
+      is_tuple_like<uncvref_t<Tuple>>::value &&
+      tuple_is_implicitly_xxx<
+        Tuple,
+        brigand::bind<
+          detail_::is_allocator_extended_implicitly_constructible_t,
+          brigand::_1, brigand::pin<Alloc const &>, brigand::_2
+        >
+      >::value,
+      bool
+    > = false
+  >
+  constexpr tuple(allocator_arg_t, Alloc const & a, Tuple && t)
+  : base_(allocator_arg_t{}, a, indexes_{}, std::forward<Tuple>(t))
+  {}
+
+  // 13, 14, 15, 16 (explicit)
+  template<
+    class Alloc,
+    class Tuple,
+    std::enable_if_t<
+      is_tuple_like<uncvref_t<Tuple>>::value &&
+      !tuple_is_implicitly_xxx<
+        Tuple,
+        brigand::bind<
+          detail_::is_allocator_extended_implicitly_constructible_t,
+          brigand::_1, brigand::pin<Alloc const &>, brigand::_2
+        >
+      >::value &&
+      tuple_is_implicitly_xxx<
+        Tuple,
+        brigand::bind<
+          detail_::is_allocator_extended_constructible_t,
+          brigand::_1, brigand::pin<Alloc const &>, brigand::_2
+        >
+      >::value,
+      bool
+    > = false
+  >
+  explicit constexpr tuple(allocator_arg_t, Alloc const & a, Tuple && t)
+  : base_(allocator_arg_t{}, a, indexes_{}, std::forward<Tuple>(t))
+  {}
+
+  // 18
+  template<
+    class Alloc,
+    std::enable_if_t<
+      tuple_is_implicitly_xxx<
+        tuple &&,
+        brigand::bind<
+          detail_::is_allocator_extended_constructible_t,
+          brigand::_1, brigand::pin<Alloc const &>, brigand::_2
+        >
+      >::value,
+      bool
+    > = false
+  >
+  constexpr tuple(allocator_arg_t, Alloc const & a, tuple && other)
+  : base_(allocator_arg_t{}, a, indexes_{}, std::move(other))
+  {}
+
+  // 17
+  template<
+    class Alloc,
+    std::enable_if_t<
+      tuple_is_implicitly_xxx<
+        tuple const &,
+        brigand::bind<
+          detail_::is_allocator_extended_constructible_t,
+          brigand::_1, brigand::pin<Alloc const &>, brigand::_2
+        >
+      >::value,
+      bool
+    > = false
+  >
+  constexpr tuple(allocator_arg_t, Alloc const & a, tuple const & other)
+  : base_(allocator_arg_t{}, a, indexes_{}, other)
+  {}
+
 
   tuple & operator=(tuple const & t)
   noexcept(noexcept(
