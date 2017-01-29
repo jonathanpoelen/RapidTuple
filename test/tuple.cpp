@@ -491,6 +491,17 @@ int main()
 
   test_special_cons();
 
+  {
+    int i;
+
+    S<decltype(falcon::make_tuple(1, 3))>{} = S<falcon::tuple<int, int>>{};
+    S<decltype(falcon::make_tuple(1, std::ref(i)))>{} = S<falcon::tuple<int, int&>>{};
+
+    S<decltype(falcon::tie(i, i))>{} = S<falcon::tuple<int&, int&>>{};
+
+    S<decltype(falcon::forward_as_tuple(1, i))>{} = S<falcon::tuple<int&&, int&>>{};
+  }
+
   using tuple1 = falcon::tuple<int>;
   using tuple2 = falcon::tuple<unsigned>;
   Check<noexcept(tuple1())>();

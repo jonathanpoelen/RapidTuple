@@ -631,9 +631,11 @@ namespace detail_
 
   template<bool, class T, class Alloc, class... Args>
   struct is_allocator_extended_implicitly_constructible_impl
+#ifndef IN_IDE_PARSER
   : decltype(is_implicitly_convertible<T>(
     1, {std::declval<Args>()..., std::declval<Alloc const &>()}
   ))
+#endif
   {};
 
   template<class T, class Alloc>
@@ -1278,6 +1280,47 @@ template<class... Ts>
 void swap(tuple<Ts...> & t1, tuple<Ts...> & t2)
 noexcept(noexcept(t1.swap(t2)))
 { t1.swap(t2); }
+
+
+// TODO type_traits/unwrap_refwrapper.hpp
+template <class T>
+struct unwrap_refwrapper
+{ using type = T; };
+
+template <class T>
+struct unwrap_refwrapper<std::reference_wrapper<T>>
+{ using type = T&; };
+
+template<class T>
+using unwrap_refwrapper_t = typename unwrap_refwrapper<T>::type;
+
+// TODO type_traits/decay_unwrap_refwrapper_t.hpp
+template <class T>
+using decay_unwrap_refwrapper_t = unwrap_refwrapper_t<std::decay_t<T>>;
+
+
+template<class... Ts>
+constexpr
+tuple<decay_unwrap_refwrapper_t<Ts>...>
+make_tuple(Ts && ... args) noexcept(noexcept(
+  tuple<decay_unwrap_refwrapper_t<Ts>...>{std::forward<Ts>(args)...}
+))
+{ return tuple<decay_unwrap_refwrapper_t<Ts>...>{std::forward<Ts>(args)...}; }
+
+
+template<class... Ts>
+constexpr
+tuple<Ts & ...>
+tie(Ts & ... args) noexcept
+{ return tuple<Ts & ...>{args...}; }
+
+
+template<class... Ts>
+constexpr
+tuple<Ts && ...>
+forward_as_tuple(Ts && ... args) noexcept
+{ return tuple<Ts && ...>{std::forward<Ts>(args)...}; }
+
 
 }
 
