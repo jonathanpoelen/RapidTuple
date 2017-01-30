@@ -472,7 +472,7 @@ public:
     }
   };
 
-  template<class Tuple, class Indices>
+  template<class Tuple, class Indexes>
   struct tuple_to_list;
 
   template<class Tuple, class... Ints>
@@ -481,11 +481,19 @@ public:
 
   template<class Tuple, class... Ints>
   struct tuple_to_list<Tuple &, brigand::list<Ints...>>
-  { using type = brigand::list<std::tuple_element_t<Ints::value, Tuple> &...>; };
+  { using type = brigand::list<std::tuple_element_t<Ints::value, Tuple> & ...>; };
 
   template<class Tuple, class... Ints>
   struct tuple_to_list<Tuple &&, brigand::list<Ints...>>
-  { using type = brigand::list<std::tuple_element_t<Ints::value, Tuple> &&...>; };
+  { using type = brigand::list<std::tuple_element_t<Ints::value, Tuple> && ...>; };
+
+  template<class Tuple>
+  using range_for_tuple = brigand::range<
+    size_t, 0, std::tuple_size<uncvref_t<Tuple>>::value
+  >;
+
+  template<class Tuple,class Indexes = range_for_tuple<Tuple>>
+  using tuple_to_list_t = typename tuple_to_list<Tuple, Indexes>::type;
 }
 
 namespace detail_
@@ -679,6 +687,15 @@ namespace detail_
   using is_allocator_extended_implicitly_constructible_t
     = typename is_allocator_extended_implicitly_constructible<
       T, Alloc, Args...>::type;
+
+  template<class T, class... Us>
+  struct is_extended_same
+  : std::false_type
+  {};
+  template<class T>
+  struct is_extended_same<T, T>
+  : std::true_type
+  {};
 }
 
 template<class... Ts>
@@ -696,22 +713,24 @@ class tuple
   template<class Tuple>
   using is_tuple_like = brigand::bool_<
     std::tuple_size<Tuple>::value == sizeof...(Ts) &&
+    // !detail_::is_extended_same<Tuple, uncvref_t<Ts>...>::value &&
     !std::is_same<Tuple, tuple>::value
   >;
 
   template<
-    class Tuple, class Lbd,
-    size_t tsz = std::tuple_size<uncvref_t<Tuple>>::value
+    class Tuple_, class Lbd,
+    size_t tsz = std::tuple_size<uncvref_t<Tuple_>>::value,
+    class Tuple = std::enable_if_t<
+      brigand::size<detail_::tuple_to_list_t<Tuple_>>::value == sizeof...(Ts),
+      Tuple_
+    >
   >
   using tuple_is_implicitly_xxx = detail_::is_same<
-    brigand::transform<
-      typename detail_::tuple_to_list<
-        Tuple,
-        brigand::range<size_t, 0, tsz>
-      >::type,
+    typename brigand::lazy::transform<
+      detail_::tuple_to_list_t<Tuple>,
       brigand::list<Ts...>,
       Lbd
-    >,
+    >::type,
     brigand::filled_list<std::true_type, tsz>
   >;
 
@@ -1322,6 +1341,48 @@ forward_as_tuple(Ts && ... args) noexcept
 { return tuple<Ts && ...>{std::forward<Ts>(args)...}; }
 
 
+namespace detail_
+{
+  template<class T, class n>
+  using filled_list_t = brigand::filled_list<T, n::value>;
+
+  template<class... Tuples>
+  using tuple_cat_type = brigand::wrap<
+    brigand::append<detail_::tuple_to_list_t<Tuples>...>,
+    tuple
+  >;
+
+  template<class T, class... ituple, class... ielem, class Tuple>
+  constexpr T
+  tuple_cat_impl(brigand::list<ituple...>, brigand::list<ielem...>, Tuple && t)
+  FALCON_RETURN_NOEXCEPT(
+    T(get<ielem::value>(get<ituple::value>(t))...)
+  )
+}
+
+template<class... Tuples>
+constexpr
+detail_::tuple_cat_type<Tuples...>
+tuple_cat(Tuples && ... tuples)
+FALCON_RETURN_NOEXCEPT(
+  detail_::tuple_cat_impl<
+    detail_::tuple_cat_type<Tuples...>
+  >(
+    /*index_by_tuple*/ brigand::join<brigand::transform<
+      /*indexes*/ detail_::range_for<Tuples...>,
+      /*size_list*/ brigand::list<
+        typename std::tuple_size<uncvref_t<Tuples>>::type...
+      >,
+      brigand::bind<detail_::filled_list_t, brigand::_1, brigand::_2>
+    >>{},
+    /*index_by_element*/ brigand::append<
+      detail_::range_for_tuple<Tuples>...
+    >{},
+    falcon::forward_as_tuple(std::forward<Tuples>(tuples)...)
+  )
+)
+
+
 }
 
 namespace rapidtuple {
@@ -1360,44 +1421,12 @@ FALCON_EMPTY_CLASS(default_element_t);
 constexpr default_element_t default_element;
 
 
-template<class... Ts>
-constexpr auto make_tuple(Ts &&... args) {
-  return tuple<detail_::remove_reference_wrapper_t<std::decay_t<Ts>>...>{std::forward<Ts>(args)...};
-}
-
-
-template<class... Ts>
-constexpr tuple<Ts&...> tie(Ts&... args) noexcept {
-  return tuple<Ts&...>{args...};
-}
-
-
-template<class... Ts>
-constexpr tuple<Ts&&...> forward_as_tuple(Ts&&... args) noexcept {
-  return tuple<Ts&&...>{std::forward<Ts>(args)...};
-}
-
-
 using std::ignore;
 
 
 namespace detail_ {
-  template<class PackRet, class IntsPack, class TuplesPack>
-  struct tuple_concater;
-
   template<class...>
   class pack {};
-}
-
-template<class... Tuples>
-constexpr auto tuple_cat(Tuples&&... tuples) {
-  return detail_::tuple_concater<
-      detail_::pack<>,
-      detail_::pack<
-        std::make_index_sequence<std::tuple_size<std::decay_t<Tuples>>::value>...
-      >,
-      detail_::pack<Tuples...>
-  >::impl(std::forward<Tuples>(tuples)...);
 }
 
 using ignore_t = std::remove_const_t<decltype(std::ignore)>;
@@ -1995,39 +2024,6 @@ namespace detail_{
   ) {
     return !(lhs < rhs);
   }
-
-  template<class PackRet, class IntsPack, class TuplesPack>
-  struct tuple_concater;
-
-  template<class... Es>
-  struct tuple_concater<pack<Es...>, pack<>, pack<>>
-  {
-    template<class... Ts>
-    constexpr static tuple<Es...> impl(Ts &&... args) {
-      return tuple<Es...>(std::forward<Ts>(args)...);
-    }
-  };
-
-  template<class... Es, std::size_t... Ints, class... TInts, class Tuple, class... Tuples>
-  struct tuple_concater<
-      pack<Es...>,
-      pack<std::index_sequence<Ints...>, TInts...>,
-      pack<Tuple, Tuples...>
-  > {
-    template<class... Ts>
-    static constexpr auto
-    impl(Tuple && t, Tuples &&... other, Ts &&... args) {
-      return tuple_concater<
-        pack<Es..., std::tuple_element_t<Ints, std::remove_reference_t<Tuple>>...>,
-        pack<TInts...>,
-        pack<Tuples...>
-      >::impl(
-        std::forward<Tuples>(other)...,
-        std::forward<Ts>(args)...,
-        get<Ints>(std::forward<Tuple>(t))...
-      );
-    }
-  };
 }
 
 using detail_::get;

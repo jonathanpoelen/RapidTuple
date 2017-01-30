@@ -388,6 +388,19 @@ inline void test_special_cons()
     T{std::allocator_arg_t{}, allocator{}, std::move(t)};
   }
   {
+    using U = falcon::tuple<int>;
+    using T = falcon::tuple<U>;
+    U t;
+    T{t};
+    T{std::move(t)};
+  }
+  {
+    using U = falcon::tuple<int, int>;
+    using T = falcon::tuple<U>;
+    U t;
+    T{t};
+  }
+  {
     auto sbuf = std::cout.rdbuf(nullptr);
     using T = falcon::tuple<O&&>;
     std::allocator_arg_t arg;
@@ -483,11 +496,7 @@ int main()
   test_cons<falcon::tuple, O>(sbuf1);
   test_cons<falcon::tuple, Oa>(sbuf1, std::allocator_arg_t{}, allocator{});
 
-  {
-    falcon::tuple<> t;
-    falcon::tuple<>{std::allocator_arg_t{}, allocator{}, t};
-    falcon::tuple<>{std::allocator_arg_t{}, allocator{}, std::move(t)};
-  }
+  // TODO tuple_cat internal copy/move
 
   test_special_cons();
 
@@ -500,6 +509,26 @@ int main()
     S<decltype(falcon::tie(i, i))>{} = S<falcon::tuple<int&, int&>>{};
 
     S<decltype(falcon::forward_as_tuple(1, i))>{} = S<falcon::tuple<int&&, int&>>{};
+
+    S<decltype(falcon::tuple_cat(
+      falcon::tuple<int, long>{},
+      falcon::tuple<char, double>{},
+      falcon::tuple<unsigned, float>{}
+    ))>{} = S<falcon::tuple<int, long, char, double, unsigned, float>>{};
+
+    S<decltype(falcon::tuple_cat(
+      falcon::tuple<int, long>{},
+      std::array<char, 3>{},
+      falcon::tuple<unsigned, float>{}
+    ))>{} = S<falcon::tuple<int, long, char, char, char, unsigned, float>>{};
+
+    falcon::tuple_cat(
+      std::pair<int, long>{},
+      std::array<char, 3>{},
+      std::tuple<unsigned, float>{}
+    ) = falcon::tuple<int, long, char, char, char, unsigned, float>{};
+
+    falcon::tuple_cat(std::pair<int, long>{}) = falcon::tuple<int, long>{};
   }
 
   using tuple1 = falcon::tuple<int>;
