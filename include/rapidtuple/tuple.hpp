@@ -36,6 +36,20 @@ namespace falcon {
 
 using std::size_t;
 
+struct as_const_fn
+{
+  template<class T>
+  T const &
+  operator()(T const & x) const noexcept
+  { return x; }
+};
+
+#ifndef IN_IDE_PARSER
+constexpr as_const_fn as_const;
+#else
+  int const & as_const(int const & x) noexcept;
+#endif
+
 using allocator_arg_t = std::allocator_arg_t;
 constexpr allocator_arg_t allocator_arg {};
 
@@ -192,6 +206,22 @@ namespace detail_
   using tuple_indexes_for = typename
     mpl_list_to_tuple_indexes<range_for<Ts...>>::type;
 
+  template<class T, class U>
+  struct add_const_if_copy_reference
+  { using type = U; };
+
+  template<class T>
+  struct add_const_if_copy_reference<T, T&>
+  { using type = T const &; };
+
+  template<class T>
+  struct add_const_if_copy_reference<T&, T&>
+  { using type = T &; };
+
+  template<class T, class U>
+  using add_const_if_copy_reference_t
+    = typename add_const_if_copy_reference<T, U>::type;
+
   template<class Ints, class... Ts>
   struct tuple_impl;
 
@@ -240,8 +270,10 @@ namespace detail_
       > = true
     >
     constexpr explicit tuple_leaf(U && v)
-    noexcept(std::is_nothrow_constructible<T, U>::value)
-    : T(std::forward<U>(v))
+    noexcept(std::is_nothrow_constructible<
+      T, add_const_if_copy_reference_t<T, U>>::value
+    )
+    : T(std::forward<add_const_if_copy_reference_t<T, U>>(v))
     {}
 
     template<
@@ -252,7 +284,7 @@ namespace detail_
       > = true
     >
     explicit tuple_leaf(allocator_arg_t, Alloc const &, U && v)
-    : T(std::forward<U>(v))
+    : T(std::forward<add_const_if_copy_reference_t<T, U>>(v))
     {}
 
     template<
@@ -263,22 +295,19 @@ namespace detail_
       > = true
     >
     explicit tuple_leaf(allocator_arg_t, Alloc const & a, U && v)
-    : T(std::forward<U>(v), a)
+    : T(std::forward<add_const_if_copy_reference_t<T, U>>(v), a)
     {}
 
 
     tuple_leaf & operator=(tuple_leaf const & t) = delete;
     tuple_leaf & operator=(tuple_leaf && t) = delete;
 
-    template <class U>
+    template<class U>
     void operator=(U && v)
-    noexcept(std::is_nothrow_assignable<T&, U&&>::value)
-    { T::operator=(std::move(v)); }
-
-    template <class U>
-    void assign(U const & v)
-    noexcept(std::is_nothrow_assignable<T&, U const &>::value)
-    { T::operator=(v); }
+    noexcept(std::is_nothrow_assignable<
+      T&, add_const_if_copy_reference_t<T, U>
+    >::value)
+    { T::operator=(std::forward<add_const_if_copy_reference_t<T, U>>(v)); }
 
 
     int
@@ -330,7 +359,7 @@ public:
     : value(a)
     {}
 
-    template <
+    template<
       class U,
       std::enable_if_t<
         !std::is_same<uncvref_t<U>, tuple_leaf>::value,
@@ -338,8 +367,10 @@ public:
       > = true
     >
     constexpr explicit tuple_leaf(U && v)
-    noexcept(std::is_nothrow_constructible<T, U>::value)
-    : value(std::forward<U>(v))
+    noexcept(std::is_nothrow_constructible<
+      T, add_const_if_copy_reference_t<T, U>>::value
+    )
+    : value(std::forward<add_const_if_copy_reference_t<T, U>>(v))
     {}
 
     template<
@@ -350,7 +381,7 @@ public:
       > = true
     >
     explicit tuple_leaf(allocator_arg_t, Alloc const &, U && v)
-    : value(std::forward<U>(v))
+    : value(std::forward<add_const_if_copy_reference_t<T, U>>(v))
     {}
 
     template<
@@ -361,23 +392,19 @@ public:
       > = true
     >
     explicit tuple_leaf(allocator_arg_t, Alloc const & a, U && v)
-    : value(std::forward<U>(v), a)
+    : value(std::forward<add_const_if_copy_reference_t<T, U>>(v), a)
     {}
 
 
     tuple_leaf & operator=(tuple_leaf const & t) = delete;
     tuple_leaf & operator=(tuple_leaf && t) = delete;
 
-    template <class U>
+    template<class U>
     void operator=(U && v)
-    noexcept(std::is_nothrow_assignable<T&, U&&>::value)
-    { value = std::move(v); }
-
-    template <class U>
-    void assign(U const & v)
-    noexcept(std::is_nothrow_assignable<T&, U const &>::value)
-    { value = v; }
-
+    noexcept(std::is_nothrow_assignable<
+      T&, add_const_if_copy_reference_t<T, U>>::value
+    )
+    { value = std::forward<add_const_if_copy_reference_t<T, U>>(v); }
 
     int swap(tuple_leaf & t)
     noexcept(is_nothrow_swappable<tuple_leaf>::value)
@@ -1096,43 +1123,43 @@ public:
 // get
 //@{
 
-  template <size_t i, class... Us>
+  template<size_t i, class... Us>
   friend constexpr
   typename std::tuple_element<i, tuple<Us...>>::type &
   get(tuple<Us...>       & t) noexcept;
 
-  template <size_t i, class... Us>
+  template<size_t i, class... Us>
   friend constexpr
   typename std::tuple_element<i, tuple<Us...>>::type const &
   get(tuple<Us...> const & t) noexcept;
 
-  template <size_t i, class... Us>
+  template<size_t i, class... Us>
   friend constexpr
   typename std::tuple_element<i, tuple<Us...>>::type &&
   get(tuple<Us...>       && t) noexcept;
 
-  template <size_t i, class... Us>
+  template<size_t i, class... Us>
   friend constexpr
   typename std::tuple_element<i, tuple<Us...>>::type const &&
   get(tuple<Us...> const && t) noexcept;
 
 
-  template <class T, class... Us>
+  template<class T, class... Us>
   friend constexpr
   T &
   get(tuple<Us...>       & t) noexcept;
 
-  template <class T, class... Us>
+  template<class T, class... Us>
   friend constexpr
   T const &
   get(tuple<Us...> const & t) noexcept;
 
-  template <class T, class... Us>
+  template<class T, class... Us>
   friend constexpr
   T &&
   get(tuple<Us...>       && t) noexcept;
 
-  template <class T, class... Us>
+  template<class T, class... Us>
   friend constexpr
   T const &&
   get(tuple<Us...> const && t) noexcept;
@@ -1140,7 +1167,7 @@ public:
 //@}
 };
 
-template <>
+template<>
 struct tuple<>
 {
   tuple() = default;
@@ -1158,12 +1185,12 @@ struct tuple<>
   noexcept
   {}
 
-  template <class Alloc>
+  template<class Alloc>
   tuple(allocator_arg_t, Alloc const &)
   noexcept
   {}
 
-  template <class Alloc>
+  template<class Alloc>
   tuple(allocator_arg_t, Alloc const &, tuple const &)
   noexcept
   {}
@@ -1199,7 +1226,7 @@ struct tuple<>
 // get
 //@{
 
-template <size_t i, class... Ts>
+template<size_t i, class... Ts>
 constexpr typename std::tuple_element<i, tuple<Ts...>>::type &
 get(tuple<Ts...>       & t) noexcept
 {
@@ -1207,7 +1234,7 @@ get(tuple<Ts...>       & t) noexcept
   return static_cast<detail_::tuple_leaf<i, type> &>(t.base_).get();
 }
 
-template <size_t i, class... Ts>
+template<size_t i, class... Ts>
 constexpr typename std::tuple_element<i, tuple<Ts...>>::type const &
 get(tuple<Ts...> const & t) noexcept
 {
@@ -1215,7 +1242,7 @@ get(tuple<Ts...> const & t) noexcept
   return static_cast<detail_::tuple_leaf<i, type> const &>(t.base_).get();
 }
 
-template <size_t i, class... Ts>
+template<size_t i, class... Ts>
 constexpr typename std::tuple_element<i, tuple<Ts...>>::type &&
 get(tuple<Ts...>       && t) noexcept
 {
@@ -1225,7 +1252,7 @@ get(tuple<Ts...>       && t) noexcept
   );
 }
 
-template <size_t i, class... Ts>
+template<size_t i, class... Ts>
 constexpr typename std::tuple_element<i, tuple<Ts...>>::type const &&
 get(tuple<Ts...> const && t) noexcept
 {
@@ -1235,7 +1262,7 @@ get(tuple<Ts...> const && t) noexcept
   );
 }
 
-template <class T, class... Ts>
+template<class T, class... Ts>
 constexpr T &
 get(tuple<Ts...>       & t) noexcept
 {
@@ -1243,7 +1270,7 @@ get(tuple<Ts...>       & t) noexcept
   return static_cast<detail_::tuple_leaf<i, T> &>(t.base_).get();
 }
 
-template <class T, class... Ts>
+template<class T, class... Ts>
 constexpr T const &
 get(tuple<Ts...> const & t) noexcept
 {
@@ -1251,7 +1278,7 @@ get(tuple<Ts...> const & t) noexcept
   return static_cast<detail_::tuple_leaf<i, T> const &>(t.base_).get();
 }
 
-template <class T, class... Ts>
+template<class T, class... Ts>
 constexpr T &&
 get(tuple<Ts...>       && t) noexcept
 {
@@ -1261,7 +1288,7 @@ get(tuple<Ts...>       && t) noexcept
   );
 }
 
-template <class T, class... Ts>
+template<class T, class... Ts>
 constexpr T const &&
 get(tuple<Ts...> const && t) noexcept
 {
@@ -1302,11 +1329,11 @@ noexcept(noexcept(t1.swap(t2)))
 
 
 // TODO type_traits/unwrap_refwrapper.hpp
-template <class T>
+template<class T>
 struct unwrap_refwrapper
 { using type = T; };
 
-template <class T>
+template<class T>
 struct unwrap_refwrapper<std::reference_wrapper<T>>
 { using type = T&; };
 
@@ -1314,7 +1341,7 @@ template<class T>
 using unwrap_refwrapper_t = typename unwrap_refwrapper<T>::type;
 
 // TODO type_traits/decay_unwrap_refwrapper_t.hpp
-template <class T>
+template<class T>
 using decay_unwrap_refwrapper_t = unwrap_refwrapper_t<std::decay_t<T>>;
 
 
@@ -1347,7 +1374,7 @@ namespace detail_
   using filled_list_t = brigand::filled_list<T, n::value>;
 
   template<class... Tuples>
-  using tuple_cat_type = brigand::wrap<
+  using tuple_cat_return_type = brigand::wrap<
     brigand::append<detail_::tuple_to_list_t<Tuples>...>,
     tuple
   >;
@@ -1362,11 +1389,11 @@ namespace detail_
 
 template<class... Tuples>
 constexpr
-detail_::tuple_cat_type<Tuples...>
+detail_::tuple_cat_return_type<Tuples...>
 tuple_cat(Tuples && ... tuples)
 FALCON_RETURN_NOEXCEPT(
   detail_::tuple_cat_impl<
-    detail_::tuple_cat_type<Tuples...>
+    detail_::tuple_cat_return_type<Tuples...>
   >(
     /*index_by_tuple*/ brigand::join<brigand::transform<
       /*indexes*/ detail_::range_for<Tuples...>,
@@ -1382,6 +1409,20 @@ FALCON_RETURN_NOEXCEPT(
   )
 )
 
+// TODO index_sequence_from_tuple
+// TODO apply
+// TODO apply_on_each
+// TODO tuple_transform ?
+// TODO tuple_as<T> = apply(maker<T>{}, ...)
+// TODO == != < > <= >= -> integral optimization
+// TODO tuple_compare
+// TODO tuple_slice
+// TODO operator[i]
+// TODO operator[iseq]
+// TODO arity
+// TODO uninit ctor
+// TODO uninit element
+// TODO optimized empty tuple with default ctor, dtor
 
 }
 

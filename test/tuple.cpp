@@ -204,9 +204,7 @@ void test_type()
   S<decltype(get<rref >(std::declval<T const &>()))>{} = S<rref &>{};
 }
 
-template<class T>
-T const & as_const(T const & x)
-{ return x; }
+using falcon::as_const;
 
 template<class F, class... Ts>
 auto is_callable(int, F f, Ts && ... args)
@@ -223,13 +221,31 @@ std::false_type is_callable(char, F, Ts && ...)
 #define DOT3 ...
 #endif
 
-template<template<class...> class Tuple, class O, class... TArgs>
-void test_cons(std::streambuf & sbuf, TArgs const & ... args)
+template<template<class...> class Tuple>
+struct tuple_cat_select
 {
-  auto old_sbuf = std::cout.rdbuf(&sbuf);
+  template<class... Ts>
+  static
+  auto _(Ts && ... args)
+  FALCON_DECLTYPE_AUTO_RETURN(
+    std::tuple_cat(std::forward<Ts>(args)...)
+  )
+};
 
-  // TODO test with allocator_arg_t
+template<>
+struct tuple_cat_select<falcon::tuple>
+{
+  template<class... Ts>
+  static
+  auto _(Ts && ... args)
+  FALCON_DECLTYPE_AUTO_RETURN(
+    falcon::tuple_cat(std::forward<Ts>(args)...)
+  )
+};
 
+template<template<class...> class Tuple, class O, class... TArgs>
+void test_cons(TArgs const & ... args)
+{
 #define add_line std::cout << "--- l." << __LINE__ << '\n'
   {
     add_line;
@@ -375,8 +391,24 @@ void test_cons(std::streambuf & sbuf, TArgs const & ... args)
     T1(args DOT3, std::move(t2));
     T1{args DOT3, t2};
   }
+  // TODO
+//   {
+//     using T1 = std::pair<O, O>;
+//     using T2 = Tuple<O>;
+//     using T3 = Tuple<T1>;
+//     using T4 = Tuple<T1, T2>;
+//     using Tr1 = Tuple<O, O, O>;
+//     using Tr2 = T3;
+//     using Tr3 = Tuple<T1, T1, T2>;
+//     tuple_cat_select<Tuple> Cat;
+//     T1 t1;
+//     T2 t2;
+//     Tr1{Cat(t1, t2)};
+//     Tr1{Cat(T1{}, T2{})};
+//     Tr2{Cat(T3{})};
+//     Tr3{Cat(T3{}, T4{})};
+//   }
 #undef add_line
-  std::cout.rdbuf(old_sbuf);
 }
 
 inline void test_special_cons()
@@ -431,7 +463,14 @@ inline void test_special_cons()
 
 }
 
-
+// print stack trace with asan
+[[noreturn]] inline void boom()
+{
+  enum bad_test {};
+  bad_test * ptr = nullptr;
+  *ptr = bad_test{}; // Boom ! :D
+  std::abort();
+}
 
 struct checkbuf
 : std::streambuf
@@ -441,26 +480,39 @@ struct checkbuf
   : s_(std::move(s))
   {}
 
+  void terminate()
+  {
+    auto const sz = static_cast<std::streamsize>(s_.size());
+    if (i_ < sz) {
+      std::cerr.write(s_.data() + i_, sz - i_) << "\n";
+      std::cerr.flush();
+      boom();
+    }
+  }
+
 protected:
   std::streamsize xsputn(const char_type* s, std::streamsize n) override
   {
     auto const sz = static_cast<std::streamsize>(s_.size());
-    if (n + i_ > sz && memcmp(s_.data() + i_, s, std::size_t(n))) {
+    if (n + i_ > sz || memcmp(s_.data() + i_, s, std::size_t(n))) {
       int i2 = 0;
-      while (n + i_ < sz && s_[std::size_t(n)] == *s) {
+      int inl = 0;
+      while (n + i_ < sz && s_[std::size_t(n)] == s[i2]) {
+        if (s_[std::size_t(n)] == '\n') {
+          inl = i2;
+        }
         ++i_;
         ++i2;
       }
       std::cerr << "\n[\n";
-      std::cerr.write(s + i2, n - i2);
+      std::cerr.write(s + inl, n - inl);
       std::cerr << "\n -- differ to -- \n";
-      std::streamsize i = std::max(0, int(i_) - 10);
-      std::cerr.write(s_.data() + i, sz - i);
+      std::streamsize i = std::streamsize(i_) - (i2 - inl);
+      std::cerr.write(s_.data() + i, std::min(sz - i, std::streamsize(50)));
       std::cerr << "\n]\n";
       std::cerr.flush();
 
-      int * ptr = static_cast<int*>(nullptr);
-      *ptr = 0; // Boom ! :D
+      boom();
     }
     i_ += n;
     return n;
@@ -482,19 +534,25 @@ int main()
   test_type<std::tuple, cpp17_or_later>();
   test_type<falcon::tuple, true>();
 
+  // TODO O and Oa with a member variable
   std::stringbuf sbuf1;
-  test_cons<std::tuple, O>(sbuf1);
-  test_cons<std::tuple, Oa>(sbuf1, std::allocator_arg_t{}, allocator{});
-  test_cons<std::tuple, O>(sbuf1);
-  test_cons<std::tuple, Oa>(sbuf1, std::allocator_arg_t{}, allocator{});
+  auto old_sbuf = std::cout.rdbuf(&sbuf1);
+  test_cons<std::tuple, O>();
+  test_cons<std::tuple, Oa>(std::allocator_arg_t{}, allocator{});
+  test_cons<std::tuple, O>();
+  test_cons<std::tuple, Oa>(std::allocator_arg_t{}, allocator{});
+  std::cout.rdbuf(old_sbuf);
   auto str = sbuf1.str();
   CHECK_NE(str.size(), 0u);
   //std::cerr << str << '\n';
   checkbuf sbuf2(std::move(str));
-  test_cons<falcon::tuple, O>(sbuf1);
-  test_cons<falcon::tuple, Oa>(sbuf1, std::allocator_arg_t{}, allocator{});
-  test_cons<falcon::tuple, O>(sbuf1);
-  test_cons<falcon::tuple, Oa>(sbuf1, std::allocator_arg_t{}, allocator{});
+  std::cout.rdbuf(&sbuf2);
+  test_cons<falcon::tuple, O>();
+  test_cons<falcon::tuple, Oa>(std::allocator_arg_t{}, allocator{});
+  test_cons<falcon::tuple, O>();
+  test_cons<falcon::tuple, Oa>(std::allocator_arg_t{}, allocator{});
+  std::cout.rdbuf(old_sbuf);
+  sbuf2.terminate();
 
   // TODO tuple_cat internal copy/move
 
