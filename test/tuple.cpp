@@ -106,6 +106,18 @@ struct Oa
   Oa(Oa const &, allocator) { std::cout << "Oa(Oa const &)\n"; }
 };
 
+template<class T>
+struct Im : T
+{
+  using T::T;
+  using T::operator=;
+  void operator=(int) { T::operator = (3); }
+  int i_ = 0;
+};
+
+using iO = Im<O>;
+using iOa = Im<Oa>;
+
 namespace std
 {
   template<class Alloc>
@@ -301,12 +313,12 @@ void test_cons_impl(TArgs const & ... args)
   {
     add_line;
     using T = Tuple<empty_final>;
-    test_cons_with_tuple<T>(T{});
+    test_cons_with_tuple<T>(T{}, args...);
   }
   {
     add_line;
     using T = Tuple<O>;
-    test_cons_with_tuple<T>(T{});
+    test_cons_with_tuple<T>(T{}, args...);
     T t;
     std::get<0>(t) = 3;
   }
@@ -350,24 +362,24 @@ void test_cons_impl(TArgs const & ... args)
     add_line;
     using T = Tuple<O,O>;
     using P = std::pair<O,O>;
-    test_cons_with_value<T>(P{});
+    test_cons_with_value<T>(P{}, args...);
   }
   {
     add_line;
     using T = Tuple<O,O>;
     using P = std::pair<O const, O const>;
-    test_cons_with_tuple<T>(P{});
+    test_cons_with_tuple<T>(P{}, args...);
   }
   {
     using T = Tuple<O, std::string>;
     using P = Tuple<O, char const *>;
-    test_cons_with_tuple<T>(P{O{}, ""});
+    test_cons_with_tuple<T>(P{O{}, ""}, args...);
   }
   {
     add_line;
     using P = std::pair<O, O>;
     using T = Tuple<P>;
-    test_cons_with_value<T>(P{});
+    test_cons_with_value<T>(P{}, args...);
   }
   {
     add_line;
@@ -385,51 +397,17 @@ void test_cons_impl(TArgs const & ... args)
     T(args DOT3, {2,1});
   }
   {
-//     add_line;
-//     using P = std::tuple<O>;
-//     using T = Tuple<P>;
-//     // TODO test_cons_with_value<T>(P{});
-//     P r;
-//
-//     T t{args DOT3, r};
-//   TODO
-//     T{args DOT3, std::move(r)};
-//     T{args DOT3, as_const(r)};
-//     T{args DOT3, t};
-//     T{args DOT3, std::move(t)};
-//     t = t;
-//     t = std::move(t);
+    add_line;
+    using P = std::tuple<O>;
+    using T = Tuple<P>;
+    test_cons_with_value<T>(P{}, args...);
   }
-  // TODO
-//   {
-//     add_line;
-//     using P = Tuple<O>;
-//     using T = Tuple<P>;
-//     P r;
-//
-//     T t{args DOT3, r};
-//     T{args DOT3, std::move(r)};
-//     T{args DOT3, as_const(r)};
-//     T{args DOT3, t};
-//     T{args DOT3, std::move(t)};
-//     t = t;
-//     t = std::move(t);
-//   }
-  // TODO
-//   {
-//     add_line;
-//     using P = Tuple<O, 0>;
-//     using T = Tuple<P, P>;
-//     P r;
-//
-//     T t{args DOT3, r};
-//     T{args DOT3, std::move(r)};
-//     T{args DOT3, as_const(r)};
-//     T{args DOT3, t};
-//     T{args DOT3, std::move(t)};
-//     t = t;
-//     t = std::move(t);
-//   }
+  {
+    add_line;
+    using P = Tuple<O>;
+    using T = Tuple<P>;
+    test_cons_with_value<T>(P{}, args...);
+  }
   {
     using T1 = Tuple<long, int>;
     using T2 = Tuple<long, int>;
@@ -476,11 +454,15 @@ void test_cons_impl(TArgs const & ... args)
 template<template<class...> class Tuple>
 void test_cons()
 {
-  // TODO O and Oa with a member variable
   test_cons_impl<Tuple, O>();
   test_cons_impl<Tuple, O>(std::allocator_arg_t{}, allocator{});
   test_cons_impl<Tuple, Oa>();
   test_cons_impl<Tuple, Oa>(std::allocator_arg_t{}, allocator{});
+
+  test_cons_impl<Tuple, iO>();
+  test_cons_impl<Tuple, iO>(std::allocator_arg_t{}, allocator{});
+  test_cons_impl<Tuple, iOa>();
+  test_cons_impl<Tuple, iOa>(std::allocator_arg_t{}, allocator{});
 
   // TODO
 //   {
@@ -507,57 +489,6 @@ void test_cons()
 //   }
 }
 
-inline void test_special_cons()
-{
-  {
-    using T = falcon::tuple<>;
-    T t;
-    T{std::allocator_arg_t{}, allocator{}, t};
-    T{std::allocator_arg_t{}, allocator{}, std::move(t)};
-  }
-  {
-    using U = falcon::tuple<int>;
-    using T = falcon::tuple<U>;
-    U t;
-    T{t};
-    T{std::move(t)};
-  }
-  {
-    using U = falcon::tuple<int, int>;
-    using T = falcon::tuple<U>;
-    U t;
-    T{t};
-  }
-  {
-    auto sbuf = std::cout.rdbuf(nullptr);
-    using T = falcon::tuple<O&&>;
-    std::allocator_arg_t arg;
-    allocator a;
-    std::false_type no;
-    std::true_type yes;
-    T t{O{}};
-    is_callable(1, [](auto & x) -> decltype(T{arg, a, x}){}, t) = no;
-    is_callable(1, [](auto & x) -> decltype(T{arg, a, as_const(x)}){}, t) = no;
-    is_callable(1, [](auto & x) -> decltype(T{arg, a, std::move(x)}){}, t) = yes;
-    std::cout.rdbuf(sbuf);
-  }
-  {
-    using T = falcon::tuple<>;
-    std::array<int, 0> a;
-    T t;
-    t = t;
-    t = std::move(t);
-    t = a;
-    t = std::move(a);
-    T{t};
-    T{std::move(t)};
-    T{a};
-    T{std::move(a)};
-  }
-    //t1 = T1{1,std::ignore}; TODO
-//       rapidtuple::tuple<O,O>{std::ignore,O{}};
-
-}
 
 // print stack trace with asan
 [[noreturn]] inline void boom()
@@ -621,6 +552,121 @@ private:
   std::string s_;
   std::streamsize i_ = 0;
 };
+
+
+inline void test_special_cons()
+{
+  {
+    using T = falcon::tuple<>;
+    T t;
+    T{std::allocator_arg_t{}, allocator{}, t};
+    T{std::allocator_arg_t{}, allocator{}, std::move(t)};
+  }
+  {
+    using U = falcon::tuple<int>;
+    using T = falcon::tuple<U>;
+    U t;
+    T{t};
+    T{std::move(t)};
+  }
+  {
+    using U = falcon::tuple<int, int>;
+    using T = falcon::tuple<U>;
+    U t;
+    T{t};
+  }
+  {
+    auto sbuf = std::cout.rdbuf(nullptr);
+    using T = falcon::tuple<O&&>;
+    std::allocator_arg_t arg;
+    allocator a;
+    std::false_type no;
+    std::true_type yes;
+    T t{O{}};
+    is_callable(1, [](auto & x) -> decltype(T{arg, a, x}){}, t) = no;
+    is_callable(1, [](auto & x) -> decltype(T{arg, a, as_const(x)}){}, t) = no;
+    is_callable(1, [](auto & x) -> decltype(T{arg, a, std::move(x)}){}, t) = yes;
+    std::cout.rdbuf(sbuf);
+  }
+  {
+    using T = falcon::tuple<>;
+    std::array<int, 0> a;
+    T t;
+    t = t;
+    t = std::move(t);
+    t = a;
+    t = std::move(a);
+    T{t};
+    T{std::move(t)};
+    T{a};
+    T{std::move(a)};
+  }
+  {
+    // Initialization order defined by the implementation
+    using P = falcon::tuple<O, int>;
+    using T = falcon::tuple<P, P>;
+
+    checkbuf buf(
+      "O()\n"
+
+      "O(O const &)\nO(O const &)\n"
+      "O(O const &)\nO(O &&)\n"
+      "O(O const &)\nO(O const &)\n"
+
+      "O(O &&)\nO(O const &)\n"
+      "O(O &&)\nO(O const &)\n"
+      "O(O &&)\nO(O &&)\n"
+
+      "O(O const &)\nO(O const &)\n"
+      "O(O const &)\nO(O const &)\n"
+      "O(O const &)\nO(O &&)\n"
+
+      "O(O const &)\nO(O const &)\n"
+      "O(O const &)\nO(O const &)\n"
+      "O(O &&)\nO(O &&)\n"
+
+      "O=(O const &)\nO=(O const &)\n"
+      "O=(O const &)\nO=(O const &)\n"
+      "O=(O &&)\nO=(O &&)\n"
+
+      // swap
+      "O(O &&)\nO=(O &&)\nO=(O &&)\n"
+      "O(O &&)\nO=(O &&)\nO=(O &&)\n"
+    );
+    auto old_sbuf = std::cout.rdbuf(&buf);
+
+    P v;
+
+    T t{v, v};
+    T{v, std::move(v)};
+    T{v, as_const(v)};
+
+    T{std::move(v), v};
+    T{std::move(v), as_const(v)};
+    T{std::move(v), std::move(v)};
+
+    T{as_const(v), v};
+    T{as_const(v), as_const(v)};
+    T{as_const(v), std::move(v)};
+
+    T{t};
+    T{as_const(t)};
+    T{std::move(t)};
+
+    t = t;
+    t = as_const(t);
+    t = std::move(t);
+
+    t.swap(t);
+
+    buf.terminate();
+    std::cout.rdbuf(old_sbuf);
+  }
+    //t1 = T1{1,std::ignore}; TODO
+//       rapidtuple::tuple<O,O>{std::ignore,O{}};
+
+}
+
 
 int main()
 {

@@ -559,6 +559,36 @@ public:
 
   template<class Tuple,class Indexes = range_for_tuple<Tuple>>
   using tuple_to_list_t = typename tuple_to_list<Tuple, Indexes>::type;
+
+  template<class T, class... Args>
+  struct is_equivalent_to
+  : std::false_type
+  {};
+
+  template<class T, class U>
+  struct is_equivalent_to<T, U const>
+  : is_equivalent_to<T, U>
+  {};
+
+  template<class T>
+  struct is_equivalent_to<T, T>
+  : std::true_type
+  {};
+
+  template<class T>
+  struct is_equivalent_to<T &, T const &>
+  : std::true_type
+  {};
+
+  template<class T>
+  struct is_equivalent_to<T &, T>
+  : std::true_type
+  {};
+
+  template<class T>
+  struct is_equivalent_to<T const &, T>
+  : std::true_type
+  {};
 }
 
 namespace detail_
@@ -675,7 +705,16 @@ namespace detail_
 {
   template<bool, class T, class Alloc, class... Args>
   struct is_allocator_extended_constructible_impl
-  : std::is_constructible<T, Args..., Alloc const &>
+  : mpl_if_else<
+    is_constructible_with_allocator_arg_t<T>,
+    std::is_constructible<T, std::allocator_arg_t, Alloc const &, Args...>,
+    std::is_constructible<T, Args..., Alloc const &>
+  >
+  {};
+
+  template<class T, class Alloc>
+  struct is_allocator_extended_constructible_impl<true, T, Alloc>
+  : std::is_constructible<T, Alloc const &>
   {};
 
   template<class T, class Alloc, class... Args>
@@ -734,33 +773,17 @@ namespace detail_
   : std::is_default_constructible<T>
   {};
 
-  template<class T, class Alloc>
-  struct is_allocator_extended_implicitly_constructible_impl<false, T, Alloc, T&>
-  : std::is_copy_constructible<T>
-  {};
-
-  template<class T, class Alloc, class... Args>
-  struct is_allocator_extended_constructible
-  : detail_::is_allocator_extended_constructible_impl<
-    std::uses_allocator<T, Alloc>::value, T, Alloc, Args...
-  >
-  {};
-
   template<class T, class Alloc, class... Args>
   using is_allocator_extended_constructible_t
-    = typename is_allocator_extended_constructible<T, Alloc, Args...>::type;
-
-  template<class T, class Alloc, class... Args>
-  struct is_allocator_extended_implicitly_constructible
-  : detail_::is_allocator_extended_implicitly_constructible_impl<
+  = typename is_allocator_extended_constructible_impl<
     std::uses_allocator<T, Alloc>::value, T, Alloc, Args...
-  >
-  {};
+  >::type;
 
   template<class T, class Alloc, class... Args>
   using is_allocator_extended_implicitly_constructible_t
-    = typename is_allocator_extended_implicitly_constructible<
-      T, Alloc, Args...>::type;
+  = typename is_allocator_extended_implicitly_constructible_impl<
+    std::uses_allocator<T, Alloc>::value, T, Alloc, Args...
+  >::type;
 
   template<class T, class... Us>
   struct is_extended_same
@@ -911,6 +934,7 @@ public:
     class Tuple,
     std::enable_if_t<
       is_tuple_like<uncvref_t<Tuple>>::value &&
+      !detail_::is_equivalent_to<Tuple, Ts...>::value &&
       tuple_is_implicitly_convertible<Tuple>::value,
       bool
     > = false
@@ -925,6 +949,7 @@ public:
     class Tuple,
     std::enable_if_t<
       is_tuple_like<uncvref_t<Tuple>>::value &&
+      !detail_::is_equivalent_to<Tuple, Ts...>::value &&
       !tuple_is_implicitly_convertible<Tuple>::value,
       bool
     > = false
@@ -1052,6 +1077,7 @@ public:
     class Tuple,
     std::enable_if_t<
       is_tuple_like<uncvref_t<Tuple>>::value &&
+      !detail_::is_equivalent_to<Tuple, Ts...>::value &&
       tuple_is_implicitly_xxx<
         Tuple,
         brigand::bind<
@@ -1072,6 +1098,7 @@ public:
     class Tuple,
     std::enable_if_t<
       is_tuple_like<uncvref_t<Tuple>>::value &&
+      !detail_::is_equivalent_to<Tuple, Ts...>::value &&
       !tuple_is_implicitly_xxx<
         Tuple,
         brigand::bind<
