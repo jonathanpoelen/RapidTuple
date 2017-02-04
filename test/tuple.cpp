@@ -334,12 +334,42 @@ void test_cons_impl(TArgs const & ... args)
     using P = std::pair<O,O>;
     P r;
 
-    T t{args DOT3, P{}};
+    T t{args DOT3, r};
     T{args DOT3, as_const(r)};
-    T{args DOT3, r};
     T{args DOT3, t};
     T{args DOT3, std::move(t)};
-    t = P{};
+    t = std::move(r);
+    t = as_const(r);
+    t = r;
+    t = t;
+    t = std::move(t);
+  }
+  {
+    add_line;
+    using T = Tuple<O,O>;
+    using P = std::pair<O const, O const>;
+    P r;
+
+    T t{args DOT3, r};
+    T{args DOT3, as_const(r)};
+    T{args DOT3, t};
+    T{args DOT3, std::move(t)};
+    t = std::move(r);
+    t = as_const(r);
+    t = r;
+    t = t;
+    t = std::move(t);
+  }
+  {
+    using T = Tuple<O, std::string>;
+    using P = Tuple<O, char const *>;
+    P r{O{}, ""};
+
+    T t{args DOT3, r};
+    T{args DOT3, as_const(r)};
+    T{args DOT3, t};
+    T{args DOT3, std::move(t)};
+    t = std::move(r);
     t = as_const(r);
     t = r;
     t = t;
@@ -390,9 +420,6 @@ void test_cons_impl(TArgs const & ... args)
     T1(args DOT3, std::move(t2));
     T1{args DOT3, t2};
   }
-
-  // TODO ctor/assign compatible tuple (O, std::string) (O, char *)
-  // TODO const value type
 
   // TODO
 //   {
@@ -596,6 +623,8 @@ int main()
     ) = falcon::tuple<int, long, char, char, char, unsigned, float>{};
 
     falcon::tuple_cat(std::pair<int, long>{}) = falcon::tuple<int, long>{};
+
+    falcon::tuple_cat() = falcon::tuple<>{};
   }
 
   using tuple1 = falcon::tuple<int>;
