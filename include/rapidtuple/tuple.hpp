@@ -218,6 +218,22 @@ namespace detail_
   using add_const_if_copy_reference_t
     = typename add_const_if_copy_reference<T, U>::type;
 
+
+  template<class T>
+  struct is_constructible_with_allocator_arg
+  : std::false_type
+  {};
+
+  template<class... Ts>
+  struct is_constructible_with_allocator_arg<std::tuple<Ts...>>
+  : std::true_type
+  {};
+
+  template<class T>
+  using is_constructible_with_allocator_arg_t
+    = typename is_constructible_with_allocator_arg<uncv_t<T>>::type;
+
+
   template<class Ints, class... Ts>
   struct tuple_impl;
 
@@ -252,7 +268,7 @@ namespace detail_
       > = true
     >
     tuple_leaf(allocator_arg_t, Alloc const & a)
-    : T(a)
+    : tuple_leaf(is_constructible_with_allocator_arg_t<T>{}, a)
     {}
 
     tuple_leaf(tuple_leaf const &) = default;
@@ -291,7 +307,19 @@ namespace detail_
       > = true
     >
     explicit tuple_leaf(allocator_arg_t, Alloc const & a, U && v)
-    : T(std::forward<add_const_if_copy_reference_t<T, U>>(v), a)
+    : tuple_leaf(
+      is_constructible_with_allocator_arg_t<T>{},
+      a, std::forward<add_const_if_copy_reference_t<T, U>>(v))
+    {}
+
+    template<class Alloc, class... U>
+    explicit tuple_leaf(std::true_type, Alloc const & a, U && ... v)
+    : T(std::allocator_arg, a, std::forward<U>(v)...)
+    {}
+
+    template<class Alloc, class... U>
+    explicit tuple_leaf(std::false_type, Alloc const & a, U && ... v)
+    : T(std::forward<U>(v) FALCON_PACK, a)
     {}
 
 
@@ -352,7 +380,7 @@ public:
       > = true
     >
     tuple_leaf(allocator_arg_t, Alloc const & a)
-    : value(a)
+    : tuple_leaf(is_constructible_with_allocator_arg_t<T>{}, a)
     {}
 
     template<
@@ -388,7 +416,19 @@ public:
       > = true
     >
     explicit tuple_leaf(allocator_arg_t, Alloc const & a, U && v)
-    : value(std::forward<add_const_if_copy_reference_t<T, U>>(v), a)
+    : tuple_leaf(
+      is_constructible_with_allocator_arg_t<T>{},
+      a, std::forward<add_const_if_copy_reference_t<T, U>>(v))
+    {}
+
+    template<class Alloc, class... U>
+    explicit tuple_leaf(std::true_type, Alloc const & a, U && ... v)
+    : value(std::allocator_arg, a, std::forward<U>(v)...)
+    {}
+
+    template<class Alloc, class... U>
+    explicit tuple_leaf(std::false_type, Alloc const & a, U && ... v)
+    : value(std::forward<U>(v) FALCON_PACK, a)
     {}
 
 
@@ -473,10 +513,12 @@ public:
     // TODO PERF specialize for tuple
     FALCON_CONSTEXPR_AFTER_CXX11
     void assign(tuple_indexes<Ints...>, Tuple && t)
+    #ifndef IN_IDE_PARSER
     noexcept(noexcept(FALCON_UNPACK(
       std::declval<tuple_leaf<Ints, Ts>&>()
       = get<Ints>(std::forward<Tuple>(t))
     )))
+    #endif
     {
       FALCON_UNPACK(
         static_cast<tuple_leaf<Ints, Ts>&>(*this)
@@ -659,19 +701,27 @@ namespace detail_
   template<class T>
   std::false_type is_implicitly_convertible(char, any);
 
+  template<class T, class Alloc, class... Args>
+  decltype(is_implicitly_convertible<T>(1, {
+    std::allocator_arg, std::declval<Alloc const &>(), std::declval<Args>()...
+  }))
+  is_implicitly_convertible_with_alloc(std::true_type);
+
+  template<class T, class Alloc, class... Args>
+  decltype(is_implicitly_convertible<T>(
+    1, {std::declval<Args>()..., std::declval<Alloc const &>()}
+  ))
+  is_implicitly_convertible_with_alloc(std::false_type);
 
   template<bool, class T, class Alloc, class... Args>
   struct is_allocator_extended_implicitly_constructible_impl
-#ifndef IN_IDE_PARSER
-  : decltype(is_implicitly_convertible<T>(
-    1, {std::declval<Args>()..., std::declval<Alloc const &>()}
-  ))
-#endif
+  : decltype(is_implicitly_convertible_with_alloc<T, Alloc, Args...>
+    (is_constructible_with_allocator_arg_t<T>{}))
   {};
 
   template<class T, class Alloc>
   struct is_allocator_extended_implicitly_constructible_impl<true, T, Alloc>
-  : std::is_convertible<Alloc, T>
+  : std::is_convertible<Alloc const &, T>
   {};
 
   template<class T, class Alloc, class U>
@@ -1221,6 +1271,15 @@ struct tuple<>
 };
 
 
+namespace detail_
+{
+  template<class... Ts>
+  struct is_constructible_with_allocator_arg<tuple<Ts...>>
+  : std::true_type
+  {};
+}
+
+
 // get
 //@{
 
@@ -1372,8 +1431,8 @@ namespace detail_
   using filled_list_t = brigand::filled_list<T, n::value>;
 
   template<class... Tuples>
-  using tuple_cat_return_type = brigand::wrap<
-    brigand::append<detail_::tuple_to_list_t<Tuples>...>,
+  using tuple_cat_return = brigand::wrap<
+    brigand::append<detail_::tuple_to_list_t<uncvref_t<Tuples>>...>,
     tuple
   >;
 
@@ -1381,17 +1440,17 @@ namespace detail_
   constexpr T
   tuple_cat_impl(brigand::list<ituple...>, brigand::list<ielem...>, Tuple && t)
   FALCON_RETURN_NOEXCEPT(
-    T(get<ielem::value>(get<ituple::value>(t))...)
+    T(get<ielem::value>(get<ituple::value>(std::forward<Tuple>(t)))...)
   )
 }
 
 template<class... Tuples>
 constexpr
-detail_::tuple_cat_return_type<Tuples...>
+detail_::tuple_cat_return<Tuples...>
 tuple_cat(Tuples && ... tuples)
 FALCON_RETURN_NOEXCEPT(
   detail_::tuple_cat_impl<
-    detail_::tuple_cat_return_type<Tuples...>
+    detail_::tuple_cat_return<Tuples...>
   >(
     /*index_by_tuple*/ brigand::join<brigand::transform<
       /*indexes*/ detail_::range_for<Tuples...>,

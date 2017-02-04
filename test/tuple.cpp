@@ -24,6 +24,14 @@ struct S<T, 0>
   template<class U> void operator = (U const &) {}
 };
 
+template<class T>
+struct is
+{
+  template<class U>
+  void operator = (U &&)
+  { S<T>{} = S<U>{}; }
+};
+
 template<bool b>
 void Check()
 {
@@ -243,6 +251,39 @@ struct tuple_cat_select<falcon::tuple>
   )
 };
 
+template<class T, class V, class... TArgs>
+void test_cons_with_value(V && v, TArgs const & ... args)
+{
+  T t{args DOT3, v};
+  T{args DOT3, std::move(v)};
+  T{args DOT3, as_const(v)};
+  T{args DOT3, t};
+  T{args DOT3, as_const(t)};
+  T{args DOT3, std::move(t)};
+  t = t;
+  t = as_const(t);
+  t = std::move(t);
+  t.swap(t);
+}
+
+template<class T, class V, class... TArgs>
+void test_cons_with_tuple(V && v, TArgs const & ... args)
+{
+  T t{args DOT3, v};
+  T{args DOT3, std::move(v)};
+  T{args DOT3, as_const(v)};
+  T{args DOT3, t};
+  T{args DOT3, as_const(t)};
+  T{args DOT3, std::move(t)};
+  t = std::move(v);
+  t = as_const(v);
+  t = v;
+  t = t;
+  t = as_const(t);
+  t = std::move(t);
+  t.swap(t);
+}
+
 template<template<class...> class Tuple, class O, class... TArgs>
 void test_cons_impl(TArgs const & ... args)
 {
@@ -260,59 +301,36 @@ void test_cons_impl(TArgs const & ... args)
   {
     add_line;
     using T = Tuple<empty_final>;
-    T t;
-    T{args DOT3, t};
-    T{args DOT3, std::move(t)};
-    t = t;
-    t = std::move(t);
-    t.swap(t);
+    test_cons_with_tuple<T>(T{});
   }
   {
     add_line;
     using T = Tuple<O>;
+    test_cons_with_tuple<T>(T{});
     T t;
-    T{args DOT3, t};
-    T{args DOT3, std::move(t)};
-    t = t;
-    t = std::move(t);
-    t.swap(t);
-  }
-  {
-    add_line;
-    using T = Tuple<O>;
-    T t;
-    t = t;
-    t = T{args DOT3, O(1)};
     std::get<0>(t) = 3;
-    T{args DOT3, t};
-    T{args DOT3, as_const(t)};
-    T{args DOT3, std::move(t)};
   }
   {
     add_line;
     using T = Tuple<O&>;
-    O r;
-    T t{args DOT3, r};
-    t = t;
-    t = T{args DOT3, r};
-    std::get<0>(t) = r;
+    O v;
+    T t{args DOT3, v};
     T{args DOT3, t};
-    T{args DOT3, as_const(t)};
     T{args DOT3, std::move(t)};
+    t = t;
+    t = std::move(t);
+    std::get<0>(t) = v;
   }
   {
     add_line;
     using T = Tuple<O const&>;
-    O r;
-    O const cr;
-    T t{args DOT3, r};
-    T ct{args DOT3, cr};
+    O v;
+    T t{args DOT3, v};
+    T{args DOT3, std::move(v)};
+    T{args DOT3, as_const(v)};
     T{args DOT3, t};
     T{args DOT3, as_const(t)};
     T{args DOT3, std::move(t)};
-    T{args DOT3, ct};
-    T{args DOT3, as_const(ct)};
-    T{args DOT3, std::move(ct)};
   }
   {
     add_line;
@@ -332,47 +350,33 @@ void test_cons_impl(TArgs const & ... args)
     add_line;
     using T = Tuple<O,O>;
     using P = std::pair<O,O>;
-    P r;
-
-    T t{args DOT3, r};
-    T{args DOT3, as_const(r)};
-    T{args DOT3, t};
-    T{args DOT3, std::move(t)};
-    t = std::move(r);
-    t = as_const(r);
-    t = r;
-    t = t;
-    t = std::move(t);
+    test_cons_with_value<T>(P{});
   }
   {
     add_line;
     using T = Tuple<O,O>;
     using P = std::pair<O const, O const>;
-    P r;
-
-    T t{args DOT3, r};
-    T{args DOT3, as_const(r)};
-    T{args DOT3, t};
-    T{args DOT3, std::move(t)};
-    t = std::move(r);
-    t = as_const(r);
-    t = r;
-    t = t;
-    t = std::move(t);
+    test_cons_with_tuple<T>(P{});
   }
   {
     using T = Tuple<O, std::string>;
     using P = Tuple<O, char const *>;
-    P r{O{}, ""};
+    test_cons_with_tuple<T>(P{O{}, ""});
+  }
+  {
+    add_line;
+    using P = std::pair<O, O>;
+    using T = Tuple<P>;
+    test_cons_with_value<T>(P{});
+  }
+  {
+    add_line;
+    using P = std::pair<O, O>;
+    using T = Tuple<P&&>;
+    P r;
 
-    T t{args DOT3, r};
-    T{args DOT3, as_const(r)};
-    T{args DOT3, t};
+    T t{args DOT3, std::move(r)};
     T{args DOT3, std::move(t)};
-    t = std::move(r);
-    t = as_const(r);
-    t = r;
-    t = t;
     t = std::move(t);
   }
   {
@@ -380,6 +384,52 @@ void test_cons_impl(TArgs const & ... args)
     using T = Tuple<std::array<O,2>>;
     T(args DOT3, {2,1});
   }
+  {
+//     add_line;
+//     using P = std::tuple<O>;
+//     using T = Tuple<P>;
+//     // TODO test_cons_with_value<T>(P{});
+//     P r;
+//
+//     T t{args DOT3, r};
+//   TODO
+//     T{args DOT3, std::move(r)};
+//     T{args DOT3, as_const(r)};
+//     T{args DOT3, t};
+//     T{args DOT3, std::move(t)};
+//     t = t;
+//     t = std::move(t);
+  }
+  // TODO
+//   {
+//     add_line;
+//     using P = Tuple<O>;
+//     using T = Tuple<P>;
+//     P r;
+//
+//     T t{args DOT3, r};
+//     T{args DOT3, std::move(r)};
+//     T{args DOT3, as_const(r)};
+//     T{args DOT3, t};
+//     T{args DOT3, std::move(t)};
+//     t = t;
+//     t = std::move(t);
+//   }
+  // TODO
+//   {
+//     add_line;
+//     using P = Tuple<O, 0>;
+//     using T = Tuple<P, P>;
+//     P r;
+//
+//     T t{args DOT3, r};
+//     T{args DOT3, std::move(r)};
+//     T{args DOT3, as_const(r)};
+//     T{args DOT3, t};
+//     T{args DOT3, std::move(t)};
+//     t = t;
+//     t = std::move(t);
+//   }
   {
     using T1 = Tuple<long, int>;
     using T2 = Tuple<long, int>;
@@ -420,34 +470,41 @@ void test_cons_impl(TArgs const & ... args)
     T1(args DOT3, std::move(t2));
     T1{args DOT3, t2};
   }
-
-  // TODO
-//   {
-//     using T1 = std::pair<O, O>;
-//     using T2 = Tuple<O>;
-//     using T3 = Tuple<T1>;
-//     using T4 = Tuple<T1, T2>;
-//     using Tr1 = Tuple<O, O, O>;
-//     using Tr2 = T3;
-//     using Tr3 = Tuple<T1, T1, T2>;
-//     tuple_cat_select<Tuple> Cat;
-//     T1 t1;
-//     T2 t2;
-//     Tr1{Cat(t1, t2)};
-//     Tr1{Cat(T1{}, T2{})};
-//     Tr2{Cat(T3{})};
-//     Tr3{Cat(T3{}, T4{})};
-//   }
 #undef add_line
 }
 
 template<template<class...> class Tuple>
 void test_cons()
 {
+  // TODO O and Oa with a member variable
   test_cons_impl<Tuple, O>();
   test_cons_impl<Tuple, O>(std::allocator_arg_t{}, allocator{});
   test_cons_impl<Tuple, Oa>();
   test_cons_impl<Tuple, Oa>(std::allocator_arg_t{}, allocator{});
+
+  // TODO
+//   {
+//     using T1 = std::pair<O, O>;
+//     using T2 = Tuple<O>;
+//     using TT1 = Tuple<T1>;
+//     using TT2 = Tuple<T1, T2>;
+//     using Tr1 = Tuple<O, O, O>;
+//     using TTr1 = TT1;
+//     using TTr2 = Tuple<T1, T1, T2>;
+//     using Cat = tuple_cat_select<Tuple>;
+//     T1 t1;
+//     T2 t2;
+//     TT1 tt1;
+//     is<Tr1>{} = Cat::_(t1, t2);
+//     is<Tr1>{} = Cat::_(as_const(t1), as_const(t2));
+//     is<Tr1>{} = Cat::_(T1{}, T2{});
+//     is<TTr1>{} = Cat::_(tt1);
+//     is<TTr1>{} = Cat::_(as_const(tt1));
+//     is<TTr1>{} = Cat::_(TT1{});
+//     is<TTr2>{} = Cat::_(tt1, TT2{});
+//     is<TTr2>{} = Cat::_(as_const(tt1), TT2{});
+//     is<TTr2>{} = Cat::_(TT1{}, TT2{});
+//   }
 }
 
 inline void test_special_cons()
@@ -576,7 +633,6 @@ int main()
   test_type<std::tuple, cpp17_or_later>();
   test_type<falcon::tuple, true>();
 
-  // TODO O and Oa with a member variable
   std::stringbuf sbuf1;
   auto old_sbuf = std::cout.rdbuf(&sbuf1);
   test_cons<std::tuple>();
@@ -590,41 +646,42 @@ int main()
   std::cout.rdbuf(old_sbuf);
   sbuf2.terminate();
 
-  // TODO tuple_cat internal copy/move
-
   test_special_cons();
 
   {
     int i;
 
-    S<decltype(falcon::make_tuple(1, 3))>{} = S<falcon::tuple<int, int>>{};
-    S<decltype(falcon::make_tuple(1, std::ref(i)))>{} = S<falcon::tuple<int, int&>>{};
+    is<falcon::tuple<int, int>>{} = falcon::make_tuple(1, 3);
+    is<falcon::tuple<int, int&>>{} = falcon::make_tuple(1, std::ref(i));
 
-    S<decltype(falcon::tie(i, i))>{} = S<falcon::tuple<int&, int&>>{};
+    is<falcon::tuple<int&, int&>>{} = falcon::tie(i, i);
 
-    S<decltype(falcon::forward_as_tuple(1, i))>{} = S<falcon::tuple<int&&, int&>>{};
+    is<falcon::tuple<int&&, int&>>{} = falcon::forward_as_tuple(1, i);
 
-    S<decltype(falcon::tuple_cat(
+    is<falcon::tuple<std::pair<int, long>, char, double>>{}
+    = falcon::tuple_cat(
+      falcon::tuple<std::pair<int, long>>{},
+      falcon::tuple<char, double>{}
+    );
+
+    is<falcon::tuple<int, long, char, double, unsigned, float>>{}
+    = falcon::tuple_cat(
       falcon::tuple<int, long>{},
       falcon::tuple<char, double>{},
       falcon::tuple<unsigned, float>{}
-    ))>{} = S<falcon::tuple<int, long, char, double, unsigned, float>>{};
+    );
 
-    S<decltype(falcon::tuple_cat(
+    is<falcon::tuple<int, long, char, char, char, unsigned, float>>{}
+    = falcon::tuple_cat(
       falcon::tuple<int, long>{},
       std::array<char, 3>{},
       falcon::tuple<unsigned, float>{}
-    ))>{} = S<falcon::tuple<int, long, char, char, char, unsigned, float>>{};
+    );
 
-    falcon::tuple_cat(
-      std::pair<int, long>{},
-      std::array<char, 3>{},
-      std::tuple<unsigned, float>{}
-    ) = falcon::tuple<int, long, char, char, char, unsigned, float>{};
+    is<falcon::tuple<int, long>>{} = falcon::tuple_cat(std::pair<int, long>{});
 
-    falcon::tuple_cat(std::pair<int, long>{}) = falcon::tuple<int, long>{};
-
-    falcon::tuple_cat() = falcon::tuple<>{};
+    is<falcon::tuple<>>{} = falcon::tuple_cat(falcon::tuple<>{});
+    is<falcon::tuple<>>{} = falcon::tuple_cat(std::tuple<>{});
   }
 
   using tuple1 = falcon::tuple<int>;
@@ -683,39 +740,6 @@ int main()
 
 
 
-//   {
-//     rapidtuple::tuple<std::vector<int>>{
-//       std::allocator_arg_t{}, std::allocator<int>{}
-//     };
-//     std::allocator_arg_t arg{};
-//     std::allocator<int> a{};
-//     rapidtuple::tuple<std::vector<int>>{arg, a};
-//   }
-//
-//   {
-//     S<decltype(rapidtuple::tuple_cat(
-//       rapidtuple::tuple<int>{},rapidtuple::tuple<float,double>{}
-//     ))>() = S<rapidtuple::tuple<int,float,double>>();
-//
-//     S<decltype(rapidtuple::tuple_cat(
-//       std::declval<rapidtuple::tuple<int>&>(), std::declval<rapidtuple::tuple<float,double>&>()
-//     ))>() = S<rapidtuple::tuple<int,float,double>>();
-//   }
-//
-//   {
-//     int i;
-//     S<decltype(rapidtuple::tie(i,i))>() = S<rapidtuple::tuple<int&, int&>>();
-//     S<decltype(rapidtuple::forward_as_tuple(i,1))>() = S<rapidtuple::tuple<int&, int&&>>();
-//   }
-//
-//   {
-// #define TEST(T, I)\
-//   std::integral_constant<std::size_t, I>() =\
-//   std::integral_constant<std::size_t, rapidtuple::tuple_index_of<T, rapidtuple::tuple<int, float>>::value>()
-//     TEST(int, 0);
-//     TEST(float, 1);
-// #undef TEST
-//   }
 //   {
 //     rapidtuple::tuple<int,int> t{2,5};
 //     int x = 0;
