@@ -244,7 +244,7 @@ struct tuple_cat_select<falcon::tuple>
 };
 
 template<template<class...> class Tuple, class O, class... TArgs>
-void test_cons(TArgs const & ... args)
+void test_cons_impl(TArgs const & ... args)
 {
 #define add_line std::cout << "--- l." << __LINE__ << '\n'
   {
@@ -332,16 +332,15 @@ void test_cons(TArgs const & ... args)
     add_line;
     using T = Tuple<O,O>;
     using P = std::pair<O,O>;
-    P const cr;
     P r;
 
     T t{args DOT3, P{}};
-    T{args DOT3, cr};
+    T{args DOT3, as_const(r)};
     T{args DOT3, r};
     T{args DOT3, t};
     T{args DOT3, std::move(t)};
     t = P{};
-    t = cr;
+    t = as_const(r);
     t = r;
     t = t;
     t = std::move(t);
@@ -391,6 +390,10 @@ void test_cons(TArgs const & ... args)
     T1(args DOT3, std::move(t2));
     T1{args DOT3, t2};
   }
+
+  // TODO ctor/assign compatible tuple (O, std::string) (O, char *)
+  // TODO const value type
+
   // TODO
 //   {
 //     using T1 = std::pair<O, O>;
@@ -409,6 +412,15 @@ void test_cons(TArgs const & ... args)
 //     Tr3{Cat(T3{}, T4{})};
 //   }
 #undef add_line
+}
+
+template<template<class...> class Tuple>
+void test_cons()
+{
+  test_cons_impl<Tuple, O>();
+  test_cons_impl<Tuple, O>(std::allocator_arg_t{}, allocator{});
+  test_cons_impl<Tuple, Oa>();
+  test_cons_impl<Tuple, Oa>(std::allocator_arg_t{}, allocator{});
 }
 
 inline void test_special_cons()
@@ -480,6 +492,9 @@ struct checkbuf
   : s_(std::move(s))
   {}
 
+  ~checkbuf()
+  { terminate(); }
+
   void terminate()
   {
     auto const sz = static_cast<std::streamsize>(s_.size());
@@ -537,20 +552,14 @@ int main()
   // TODO O and Oa with a member variable
   std::stringbuf sbuf1;
   auto old_sbuf = std::cout.rdbuf(&sbuf1);
-  test_cons<std::tuple, O>();
-  test_cons<std::tuple, Oa>(std::allocator_arg_t{}, allocator{});
-  test_cons<std::tuple, O>();
-  test_cons<std::tuple, Oa>(std::allocator_arg_t{}, allocator{});
+  test_cons<std::tuple>();
   std::cout.rdbuf(old_sbuf);
   auto str = sbuf1.str();
   CHECK_NE(str.size(), 0u);
   //std::cerr << str << '\n';
   checkbuf sbuf2(std::move(str));
   std::cout.rdbuf(&sbuf2);
-  test_cons<falcon::tuple, O>();
-  test_cons<falcon::tuple, Oa>(std::allocator_arg_t{}, allocator{});
-  test_cons<falcon::tuple, O>();
-  test_cons<falcon::tuple, Oa>(std::allocator_arg_t{}, allocator{});
+  test_cons<falcon::tuple>();
   std::cout.rdbuf(old_sbuf);
   sbuf2.terminate();
 

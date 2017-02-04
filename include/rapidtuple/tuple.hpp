@@ -214,10 +214,6 @@ namespace detail_
   struct add_const_if_copy_reference<T, T&>
   { using type = T const &; };
 
-  template<class T>
-  struct add_const_if_copy_reference<T&, T&>
-  { using type = T &; };
-
   template<class T, class U>
   using add_const_if_copy_reference_t
     = typename add_const_if_copy_reference<T, U>::type;
@@ -675,21 +671,22 @@ namespace detail_
 
   template<class T, class Alloc>
   struct is_allocator_extended_implicitly_constructible_impl<true, T, Alloc>
-  : decltype(is_implicitly_convertible<T>(
-    1, std::declval<Alloc const &>()
-  ))
+  : std::is_convertible<Alloc, T>
   {};
 
-  template<class T, class Alloc, class... Args>
-  struct is_allocator_extended_implicitly_constructible_impl<
-    false, T, Alloc, Args...
-  >
-  : decltype(is_implicitly_convertible<T>(1, std::declval<Args>()...))
+  template<class T, class Alloc, class U>
+  struct is_allocator_extended_implicitly_constructible_impl<false, T, Alloc, U>
+  : std::is_convertible<U, T>
   {};
 
   template<class T, class Alloc>
   struct is_allocator_extended_implicitly_constructible_impl<false, T, Alloc>
   : std::is_default_constructible<T>
+  {};
+
+  template<class T, class Alloc>
+  struct is_allocator_extended_implicitly_constructible_impl<false, T, Alloc, T&>
+  : std::is_copy_constructible<T>
   {};
 
   template<class T, class Alloc, class... Args>
@@ -1009,7 +1006,7 @@ public:
         Tuple,
         brigand::bind<
           detail_::is_allocator_extended_implicitly_constructible_t,
-          brigand::_1, brigand::pin<Alloc const &>, brigand::_2
+          brigand::_2, brigand::pin<Alloc const &>, brigand::_1
         >
       >::value,
       bool
@@ -1029,14 +1026,14 @@ public:
         Tuple,
         brigand::bind<
           detail_::is_allocator_extended_implicitly_constructible_t,
-          brigand::_1, brigand::pin<Alloc const &>, brigand::_2
+          brigand::_2, brigand::pin<Alloc const &>, brigand::_1
         >
       >::value &&
       tuple_is_implicitly_xxx<
         Tuple,
         brigand::bind<
           detail_::is_allocator_extended_constructible_t,
-          brigand::_1, brigand::pin<Alloc const &>, brigand::_2
+          brigand::_2, brigand::pin<Alloc const &>, brigand::_1
         >
       >::value,
       bool
@@ -1054,7 +1051,7 @@ public:
         tuple &&,
         brigand::bind<
           detail_::is_allocator_extended_constructible_t,
-          brigand::_1, brigand::pin<Alloc const &>, brigand::_2
+          brigand::_2, brigand::pin<Alloc const &>, brigand::_1
         >
       >::value,
       bool
@@ -1072,7 +1069,7 @@ public:
         tuple const &,
         brigand::bind<
           detail_::is_allocator_extended_constructible_t,
-          brigand::_1, brigand::pin<Alloc const &>, brigand::_2
+          brigand::_2, brigand::pin<Alloc const &>, brigand::_1
         >
       >::value,
       bool
@@ -1217,6 +1214,7 @@ struct tuple<>
     > = false
   >
   tuple & operator=(Tuple const &)
+  noexcept
   { return *this; }
 
   void swap(tuple&) noexcept {}
