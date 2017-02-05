@@ -27,9 +27,9 @@ struct S<T, 0>
 template<class T>
 struct is
 {
-  template<class U>
+  template<class U, class = decltype(S<T>{} = S<U>{})>
   void operator = (U &&)
-  { S<T>{} = S<U>{}; }
+  {}
 };
 
 template<bool b>
@@ -463,30 +463,6 @@ void test_cons()
   test_cons_impl<Tuple, iO>(std::allocator_arg_t{}, allocator{});
   test_cons_impl<Tuple, iOa>();
   test_cons_impl<Tuple, iOa>(std::allocator_arg_t{}, allocator{});
-
-  // TODO
-//   {
-//     using T1 = std::pair<O, O>;
-//     using T2 = Tuple<O>;
-//     using TT1 = Tuple<T1>;
-//     using TT2 = Tuple<T1, T2>;
-//     using Tr1 = Tuple<O, O, O>;
-//     using TTr1 = TT1;
-//     using TTr2 = Tuple<T1, T1, T2>;
-//     using Cat = tuple_cat_select<Tuple>;
-//     T1 t1;
-//     T2 t2;
-//     TT1 tt1;
-//     is<Tr1>{} = Cat::_(t1, t2);
-//     is<Tr1>{} = Cat::_(as_const(t1), as_const(t2));
-//     is<Tr1>{} = Cat::_(T1{}, T2{});
-//     is<TTr1>{} = Cat::_(tt1);
-//     is<TTr1>{} = Cat::_(as_const(tt1));
-//     is<TTr1>{} = Cat::_(TT1{});
-//     is<TTr2>{} = Cat::_(tt1, TT2{});
-//     is<TTr2>{} = Cat::_(as_const(tt1), TT2{});
-//     is<TTr2>{} = Cat::_(TT1{}, TT2{});
-//   }
 }
 
 
@@ -553,6 +529,22 @@ private:
   std::streamsize i_ = 0;
 };
 
+struct checkbuf_barrier
+{
+  checkbuf_barrier(std::string s)
+  : buf(std::move(s))
+  , old_buf(std::cout.rdbuf(&buf))
+  {}
+
+  ~checkbuf_barrier()
+  {
+    std::cout.rdbuf(old_buf);
+  }
+
+  checkbuf buf;
+  std::streambuf * old_buf;
+};
+
 
 inline void test_special_cons()
 {
@@ -606,7 +598,7 @@ inline void test_special_cons()
     using P = falcon::tuple<O, int>;
     using T = falcon::tuple<P, P>;
 
-    checkbuf buf(
+    checkbuf_barrier checker(
       "O()\n"
 
       "O(O const &)\nO(O const &)\n"
@@ -633,7 +625,6 @@ inline void test_special_cons()
       "O(O &&)\nO=(O &&)\nO=(O &&)\n"
       "O(O &&)\nO=(O &&)\nO=(O &&)\n"
     );
-    auto old_sbuf = std::cout.rdbuf(&buf);
 
     P v;
 
@@ -658,9 +649,49 @@ inline void test_special_cons()
     t = std::move(t);
 
     t.swap(t);
+  }
+  {
+    using T1 = std::pair<O, O>;
+    using T2 = falcon::tuple<O>;
+    using TT1 = falcon::tuple<T1>;
+    using TT2 = falcon::tuple<T1, T2>;
+    using Tr1 = falcon::tuple<O, O, O>;
+    using TTr1 = TT1;
+    using TTr2 = falcon::tuple<T1, T1, T2>;
 
-    buf.terminate();
-    std::cout.rdbuf(old_sbuf);
+    checkbuf_barrier checker(
+      "O()\nO()\n"
+      "O()\n"
+      "O()\nO()\n"
+      "O()\nO()\nO()\n"
+
+      "O(O const &)\nO(O const &)\nO(O const &)\n"
+      "O(O const &)\nO(O const &)\nO(O const &)\n"
+      "O(O &&)\nO(O &&)\nO(O &&)\n"
+
+      "O(O const &)\nO(O const &)\n"
+      "O(O const &)\nO(O const &)\n"
+      "O(O &&)\nO(O &&)\n"
+
+      "O(O const &)\nO(O const &)\nO(O &&)\nO(O &&)\nO(O &&)\n"
+      "O(O const &)\nO(O const &)\nO(O const &)\nO(O const &)\nO(O const &)\n"
+    );
+
+    T1 t1;
+    T2 t2;
+    TT1 tt1;
+    TT2 tt2;
+
+    is<Tr1>{} = falcon::tuple_cat(t1, t2);
+    is<Tr1>{} = falcon::tuple_cat(as_const(t1), as_const(t2));
+    is<Tr1>{} = falcon::tuple_cat(std::move(t1), std::move(t2));
+
+    is<TTr1>{} = falcon::tuple_cat(tt1);
+    is<TTr1>{} = falcon::tuple_cat(as_const(tt1));
+    is<TTr1>{} = falcon::tuple_cat(std::move(tt1));
+
+    is<TTr2>{} = falcon::tuple_cat(tt1, std::move(tt2));
+    is<TTr2>{} = falcon::tuple_cat(tt1, as_const(tt2));
   }
     //t1 = T1{1,std::ignore}; TODO
 //       rapidtuple::tuple<O,O>{std::ignore,O{}};

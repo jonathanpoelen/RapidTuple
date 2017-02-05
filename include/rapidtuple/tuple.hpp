@@ -586,6 +586,11 @@ public:
   {};
 
   template<class T>
+  struct is_equivalent_to<T, T&&>
+  : std::true_type
+  {};
+
+  template<class T>
   struct is_equivalent_to<T const &, T>
   : std::true_type
   {};
